@@ -1,36 +1,138 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ERP Modular - Sistema Multi-Módulos
 
-## Getting Started
+Sistema ERP modular moderno criado com Next.js 16, TypeScript, Tailwind CSS e componentes UI modernos. Suporta múltiplas aplicações (módulos) dentro do mesmo sistema.
 
-First, run the development server:
+## 🚀 Tecnologias
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Next.js 16** - Framework React com App Router
+- **TypeScript** - Tipagem estática
+- **Tailwind CSS v4** - Estilização moderna
+- **Lucide React** - Ícones
+- **shadcn/ui pattern** - Componentes reutilizáveis
+
+## 📦 Estrutura do Projeto
+
+```
+erp/
+├── app/
+│   ├── layout.tsx              # Layout raiz
+│   ├── page.tsx                # Página de seleção de módulos
+│   ├── globals.css             # Estilos globais
+│   └── (modules)/              # Módulos do sistema
+│       ├── corrida/           # Módulo Corrida (Delivery/Transportes)
+│       │   ├── layout.tsx
+│       │   ├── page.tsx       # Dashboard
+│       │   ├── pedidos/
+│       │   ├── entregadores/
+│       │   ├── clientes/
+│       │   ├── rotas/
+│       │   ├── relatorios/
+│       │   └── configuracoes/
+│       ├── mercado/            # Módulo Mercado (Em breve)
+│       └── office/             # Módulo Office (Em breve)
+├── components/
+│   ├── sidebar.tsx             # Sidebar dinâmico por módulo
+│   ├── header.tsx             # Cabeçalho
+│   ├── dashboard-stats.tsx    # Cards de estatísticas
+│   └── ui/                     # Componentes UI base
+│       ├── button.tsx
+│       └── card.tsx
+└── lib/
+    └── utils.ts                # Utilitários
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## 🎨 Recursos
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Sistema Modular
+- ✅ **Multi-módulos**: Suporte a múltiplas aplicações dentro do mesmo sistema
+- ✅ **Módulo Corrida**: Sistema completo para delivery e transportes
+- ✅ **Módulos futuros**: Mercado, Office e outros em desenvolvimento
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+### Módulo Corrida
+- ✅ **Dashboard**: Visão geral com estatísticas e entregas recentes
+- ✅ **Pedidos**: Gerenciamento completo de pedidos e entregas
+- ✅ **Entregadores**: Cadastro e gestão de entregadores
+- ✅ **Clientes**: Gerenciamento de clientes com histórico
+- ✅ **Rotas**: Planejamento e otimização de rotas
+- ✅ **Relatórios**: Métricas e análises de performance
+- ✅ **Configurações**: Customização do módulo
 
-## Learn More
+### Design
+- ✅ Design SaaS moderno e responsivo
+- ✅ Sidebar dinâmica por módulo
+- ✅ Tema claro/escuro pronto
+- ✅ Componentes reutilizáveis
+- ✅ TypeScript completo
 
-To learn more about Next.js, take a look at the following resources:
+## 🛠️ Como usar
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+### Instalar dependências
+```bash
+npm install
+```
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### Executar em desenvolvimento
+```bash
+npm run dev
+```
 
-## Deploy on Vercel
+Abra [http://localhost:3000](http://localhost:3000) no navegador.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Build para produção
+```bash
+npm run build
+npm start
+```
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+## 📄 Módulos e Páginas
+
+### Módulo Corrida (`/corrida`)
+- **Dashboard** - Visão geral com estatísticas
+- **Pedidos** - Gestão de pedidos e entregas
+- **Entregadores** - Cadastro e status de entregadores
+- **Clientes** - Gerenciamento de clientes
+- **Rotas** - Planejamento de rotas
+- **Relatórios** - Análises e métricas
+- **Configurações** - Configurações do módulo
+
+### Módulo Mercado (`/mercado`)
+- Em desenvolvimento (será lançado em breve)
+
+### Módulo Office (`/office`)
+- Em desenvolvimento (será lançado em breve)
+
+## 🎨 Customização
+
+O tema usa variáveis CSS em `app/globals.css`. Você pode customizar as cores editando as variáveis:
+
+- `--primary`: Cor primária do sistema
+- `--background`: Cor de fundo
+- `--foreground`: Cor do texto
+- `--border`: Cor das bordas
+
+## 📚 Próximos Passos
+
+### Módulo Corrida
+1. ✅ Estrutura base completa
+2. Integrar API backend para pedidos
+3. Adicionar mapa e rastreamento em tempo real
+4. Sistema de notificações push
+5. Integração com GPS para entregadores
+
+### Novos Módulos
+1. Desenvolver módulo Mercado (gestão de supermercado)
+2. Desenvolver módulo Office (gestão de escritório)
+3. Adicionar autenticação e permissões por módulo
+4. Sistema de configurações globais
+
+### Melhorias Gerais
+1. Dark mode toggle funcional
+2. Gráficos interativos
+3. Exportação de relatórios em PDF
+4. Notificações em tempo real
+
+## 🔗 Links Úteis
+
+- [Next.js Documentation](https://nextjs.org/docs)
+- [Tailwind CSS Documentation](https://tailwindcss.com/docs)
+- [shadcn/ui](https://ui.shadcn.com)

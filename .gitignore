@@ -22,6 +22,7 @@
 
 # misc
 .DS_Store
+Thumbs.db
 *.pem
 
 # debug
@@ -30,8 +31,8 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 
-# env files (can opt-in for committing if needed)
-.env*
+# local env files
+.env*.local
 
 # vercel
 .vercel
@@ -39,3 +40,90 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+.next/dev/build-manifest.json
+.next/dev/build/chunks/[root-of-the-server]__51225daf._.js
+.next/dev/build/chunks/[root-of-the-server]__51225daf._.js.map
+.next/dev/build/chunks/[root-of-the-server]__974941ed._.js
+.next/dev/build/chunks/[root-of-the-server]__974941ed._.js.map
+.next/dev/build/chunks/[turbopack-node]_transforms_postcss_ts_7180740f._.js
+.next/dev/build/chunks/[turbopack-node]_transforms_postcss_ts_7180740f._.js.map
+.next/dev/build/chunks/[turbopack]_runtime.js
+.next/dev/build/chunks/[turbopack]_runtime.js.map
+.next/dev/build/chunks/node_modules_fe693df6._.js
+.next/dev/build/chunks/node_modules_fe693df6._.js.map
+.next/dev/build/postcss.js
+.next/dev/build/postcss.js.map
+.next/dev/cache/.rscinfo
+.next/dev/cache/chrome-devtools-workspace-uuid
+.next/dev/cache/next-devtools-config.json
+.next/dev/fallback-build-manifest.json
+.next/dev/lock
+.next/dev/logs/next-development.log
+.next/dev/package.json
+.next/dev/prerender-manifest.json
+.next/dev/routes-manifest.json
+.next/dev/server/app-paths-manifest.json
+.next/dev/server/app/(modules)/corrida/atletas/page.js
+.next/dev/server/app/(modules)/corrida/atletas/page.js.map
+.next/dev/server/app/(modules)/corrida/atletas/page/app-paths-manifest.json
+.next/dev/server/app/(modules)/corrida/atletas/page/build-manifest.json
+.next/dev/server/app/(modules)/corrida/atletas/page/next-font-manifest.json
+.next/dev/server/app/(modules)/corrida/atletas/page/react-loadable-manifest.json
+.next/dev/server/app/(modules)/corrida/atletas/page/server-reference-manifest.json
+.next/dev/server/app/(modules)/corrida/atletas/page_client-reference-manifest.js
+.next/dev/server/app/(modules)/corrida/configuracoes/page.js
+.next/dev/server/app/(modules)/corrida/configuracoes/page.js.map
+.next/dev/server/app/(modules)/corrida/configuracoes/page/app-paths-manifest.json
+.next/dev/server/app/(modules)/corrida/configuracoes/page/build-manifest.json
+.next/dev/server/app/(modules)/corrida/configuracoes/page/next-font-manifest.json
+.next/dev/server/app/(modules)/corrida/configuracoes/page/react-loadable-manifest.json
+.next/dev/server/app/(modules)/corrida/configuracoes/page/server-reference-manifest.json
+.next/dev/server/app/(modules)/corrida/configuracoes/page_client-reference-manifest.js
+.next/dev/server/app/(modules)/corrida/eventos/page.js
+.next/dev/server/app/(modules)/corrida/eventos/page.js.map
+.next/dev/server/app/(modules)/corrida/eventos/page/app-paths-manifest.json
+.next/dev/server/app/(modules)/corrida/eventos/page/build-manifest.json
+.next/dev/server/app/(modules)/corrida/eventos/page/next-font-manifest.json
+.next/dev/server/app/(modules)/corrida/eventos/page/react-loadable-manifest.json
+.next/dev/server/app/(modules)/corrida/eventos/page/server-reference-manifest.json
+.next/dev/server/app/(modules)/corrida/eventos/page_client-reference-manifest.js
+.next/dev/server/app/(modules)/corrida/inscricoes/page.js
+.next/dev/server/app/(modules)/corrida/inscricoes/page.js.map
+.next/dev/server/app/(modules)/corrida/inscricoes/page/app-paths-manifest.json
+.next/dev/server/app/(modules)/corrida/inscricoes/page/build-manifest.json
+.next/dev/server/app/(modules)/corrida/inscricoes/page/next-font-manifest.json
+.next/dev/server/app/(modules)/corrida/inscricoes/page/react-loadable-manifest.json
+.next/dev/server/app/(modules)/corrida/inscricoes/page/server-reference-manifest.json
+.next/dev/server/app/(modules)/corrida/inscricoes/page_client-reference-manifest.js
+.next/dev/server/app/(modules)/corrida/kit-runner/page.js
+.next/dev/server/app/(modules)/corrida/kit-runner/page.js.map
+.next/dev/server/app/(modules)/corrida/kit-runner/page/app-paths-manifest.json
+.next/dev/server/app/(modules)/corrida/kit-runner/page/build-manifest.json
+.next/dev/server/app/(modules)/corrida/kit-runner/page/next-font-manifest.json
+.next/dev/server/app/(modules)/corrida/kit-runner/page/react-loadable-manifest.json
+.next/dev/server/app/(modules)/corrida/kit-runner/page/server-reference-manifest.json
+.next/dev/server/app/(modules)/corrida/kit-runner/page_client-reference-manifest.js
+.next/dev/server/app/(modules)/corrida/page.js
+.next/dev/server/app/(modules)/corrida/page.js.map
+.next/dev/server/app/(modules)/corrida/page/app-paths-manifest.json
+.next/dev/server/app/(modules)/corrida/page/build-manifest.json
+.next/dev/server/app/(modules)/corrida/page/next-font-manifest.json
+.next/dev/server/app/(modules)/corrida/page/react-loadable-manifest.json
+.next/dev/server/app/(modules)/corrida/page/server-reference-manifest.json
+.next/dev/server/app/(modules)/corrida/page_client-reference-manifest.js
+.next/dev/server/app/(modules)/corrida/relatorios/page.js
+.next/dev/server/app/(modules)/corrida/relatorios/page.js.map
+.next/dev/server/app/(modules)/corrida/relatorios/page/app-paths-manifest.json
+.next/dev/server/app/(modules)/corrida/relatorios/page/build-manifest.json
+.next/dev/server/app/(modules)/corrida/relatorios/page/next-font-manifest.json
+.next/dev/server/app/(modules)/corrida/relatorios/page/react-loadable-manifest.json
+.next/dev/server/app/(modules)/corrida/relatorios/page/server-reference-manifest.json
+.next/dev/server/app/(modules)/corrida/relatorios/page_client-reference-manifest.js
+.next/dev/server/app/(modules)/corrida/resultados/page.js
+.next/dev/server/app/(modules)/corrida/resultados/page.js.map
+.next/dev/server/app/(modules)/corrida/resultados/page/app-paths-manifest.json
+.next/dev/server/app/(modules)/corrida/resultados/page/build-manifest.json
+.next/dev/server/app/(modules)/corrida/resultados/page/next-font-manifest.json
+.next/dev/server/app/(modules)/corrida/resultados/page/react-loadable-manifest.json
+.next/dev/server/app/(modules)/corrida/resultados/page/server-reference-manifest.json
+.next/dev/server/app/(modules)/corrida/resultados/page_client-reference-manifest.js
