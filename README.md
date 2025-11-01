@@ -28,8 +28,6 @@ erp/
 │       │   ├── rotas/
 │       │   ├── relatorios/
 │       │   └── configuracoes/
-│       ├── mercado/            # Módulo Mercado (Em breve)
-│       └── office/             # Módulo Office (Em breve)
 ├── components/
 │   ├── sidebar.tsx             # Sidebar dinâmico por módulo
 │   ├── header.tsx             # Cabeçalho
