@@ -22,6 +22,9 @@ import {
   ChevronRight,
   Receipt,
   ClipboardList,
+  Wrench,
+  DollarSign,
+  ClipboardCheck,
 } from "lucide-react";
 
 interface MenuItem {
@@ -40,6 +43,15 @@ const menuModules: Record<string, MenuItem[]> = {
     { href: "/corrida/resultados", label: "Resultados", icon: TrendingUp },
     { href: "/corrida/relatorios", label: "Relatórios", icon: BarChart3 },
     { href: "/corrida/configuracoes", label: "Configurações", icon: Settings },
+  ],
+  oficina: [
+    { href: "/oficina", label: "Dashboard", icon: LayoutDashboard },
+    { href: "/oficina/ordem-servico", label: "Ordem de Serviço", icon: ClipboardCheck },
+    { href: "/oficina/clientes", label: "Clientes", icon: Users },
+    { href: "/oficina/financeiro", label: "Financeiro", icon: DollarSign },
+    { href: "/oficina/funcionarios", label: "Funcionários", icon: Users },
+    { href: "/oficina/relatorios", label: "Relatórios", icon: BarChart3 },
+    { href: "/oficina/configuracoes", label: "Configurações", icon: Settings },
   ],
   mercado: [
     { href: "/mercado", label: "Dashboard", icon: LayoutDashboard },
@@ -87,6 +99,8 @@ export function Sidebar({ module = "corrida" }: SidebarProps) {
     switch (module) {
       case "corrida":
         return { title: "Corrida", subtitle: "Eventos Esportivos", icon: Trophy, color: "text-orange-500" };
+      case "oficina":
+        return { title: "Oficina", subtitle: "Mecânica Automotiva", icon: Wrench, color: "text-blue-500" };
       case "mercado":
         return { title: "Mercado", subtitle: "Supermercado", icon: LayoutDashboard, color: "text-green-500" };
       case "office":
