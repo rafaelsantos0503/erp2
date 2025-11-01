@@ -95,12 +95,6 @@ npm start
 - **Relatórios** - Análises e métricas
 - **Configurações** - Configurações do módulo
 
-### Módulo Mercado (`/mercado`)
-- Em desenvolvimento (será lançado em breve)
-
-### Módulo Office (`/office`)
-- Em desenvolvimento (será lançado em breve)
-
 ## 🎨 Customização
 
 O tema usa variáveis CSS em `app/globals.css`. Você pode customizar as cores editando as variáveis:
