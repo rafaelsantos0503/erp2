@@ -146,21 +146,64 @@ body {
   appearance: none;
   -webkit-appearance: none;
   -moz-appearance: none;
+  z-index: 50;
+  min-width: 140px;
+  text-align: center !important;
+  text-align-last: center !important;
+  direction: ltr;
+  padding-left: 0.75rem !important;
+  padding-right: 0.75rem !important;
+}
+
+.status-select::-webkit-inner-spin-button,
+.status-select::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+
+.status-select:focus {
+  outline: 2px solid hsl(var(--primary));
+  outline-offset: 2px;
 }
 
 .status-select option {
-  background: transparent !important;
-  background-color: transparent !important;
+  background: hsl(var(--card)) !important;
+  background-color: hsl(var(--card)) !important;
   color: hsl(var(--foreground)) !important;
+  padding: 8px 2rem !important;
+  font-size: 14px !important;
+  text-align: center !important;
+  text-align-last: center !important;
+  direction: ltr;
+  width: 100%;
+  display: block;
+  text-indent: 0;
 }
 
-.status-select option:checked,
+.status-select option:checked {
+  background: hsl(var(--primary)) !important;
+  background-color: hsl(var(--primary)) !important;
+  color: hsl(var(--primary-foreground)) !important;
+  font-weight: 600 !important;
+}
+
 .status-select option:hover,
 .status-select option:focus {
-  background: transparent !important;
-  background-color: transparent !important;
+  background: hsl(var(--accent)) !important;
+  background-color: hsl(var(--accent)) !important;
+  color: hsl(var(--accent-foreground)) !important;
 }
 
 .status-select::-ms-expand {
   display: none;
+}
+
+/* Hide scrollbar but maintain scroll functionality */
+.hide-scrollbar {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* IE and Edge */
+}
+
+.hide-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome, Safari and Opera */
 }

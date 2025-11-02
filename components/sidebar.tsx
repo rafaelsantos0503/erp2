@@ -42,6 +42,7 @@ const menuModules: Record<string, MenuItem[]> = {
   oficina: [
     { href: "/oficina", label: "Dashboard", icon: LayoutDashboard },
     { href: "/oficina/ordem-servico", label: "Ordem de Serviço", icon: ClipboardCheck },
+    { href: "/oficina/servicos", label: "Serviços", icon: Wrench },
     { href: "/oficina/clientes", label: "Clientes", icon: Users },
     { href: "/oficina/funcionarios", label: "Funcionários", icon: UserCheck },
     { href: "/oficina/financeiro", label: "Financeiro", icon: DollarSign },

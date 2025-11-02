@@ -1,12 +1,24 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { ClipboardCheck, Plus, Wrench, AlertCircle, CheckCircle, Clock, DollarSign, Trash2, Edit2, Eye, Car } from "lucide-react";
+import { ClipboardCheck, Plus, Wrench, AlertCircle, CheckCircle, Clock, DollarSign, Trash2, Edit2, Eye, Car, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Cliente, VeiculoCliente } from "../clientes/page";
 import type { Marca, Modelo, Funcionario } from "../types";
+import type { Servico } from "../servicos/page";
+import { calcularValorEstimadoServico, calcularCustoMedioAtendimento, type ConfiguracoesFinanceiras } from "../utils";
+import type { ClienteAPI } from "@/lib/services/cliente.service";
+import type { FuncionarioAPI } from "@/lib/services/funcionario.service";
+import type { ServicoAPI } from "@/lib/services/servico.service";
+import { useApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { ordemServicoService, type OrdemServicoAPI } from "@/lib/services/ordem-servico.service";
+import { financeiroService } from "@/lib/services/financeiro.service";
+import { clienteService } from "@/lib/services/cliente.service";
+import { funcionarioService } from "@/lib/services/funcionario.service";
+import { servicoService } from "@/lib/services/servico.service";
 
 export enum StatusOrdemServico {
   ORCAMENTO = "Orçamento",
@@ -24,10 +36,12 @@ export enum Prioridade {
 
 interface ItemServico {
   id: number;
+  servicoId?: number; // ID do serviço cadastrado (opcional)
   descricao: string;
   quantidade: string;
   valorUnitario: string;
   valorTotal: string;
+  tempoEstimado?: number; // Tempo do serviço em horas
 }
 
 interface OrdemServico {
@@ -52,81 +66,6 @@ interface OrdemServico {
   itens?: ItemServico[];
 }
 
-// Dados mockados - será substituído pela integração com backend
-const clientesMock: Cliente[] = [
-  { 
-    id: 1, 
-    nome: "João Silva", 
-    telefone: "(11) 99999-9999", 
-    email: "joao@email.com", 
-    cpf: "123.456.789-00", 
-    endereco: { 
-      cep: "01310-100", 
-      logradouro: "Rua das Flores", 
-      numero: "123", 
-      complemento: "Apto 201", 
-      bairro: "Bela Vista", 
-      cidade: "São Paulo", 
-      estado: "SP" 
-    },
-    veiculos: [
-      { id: 1, marca: "Honda", modelo: "Civic", placa: "ABC-1234", ano: "2020", cor: "Prata" },
-      { id: 2, marca: "Toyota", modelo: "Corolla", placa: "DEF-5678", ano: "2019", cor: "Branco" }
-    ]
-  },
-  { 
-    id: 2, 
-    nome: "Maria Santos", 
-    telefone: "(11) 88888-8888", 
-    email: "maria@email.com", 
-    cpf: "987.654.321-00", 
-    endereco: { 
-      cep: "01310-100", 
-      logradouro: "Av. Paulista", 
-      numero: "1000", 
-      bairro: "Bela Vista", 
-      cidade: "São Paulo", 
-      estado: "SP" 
-    },
-    veiculos: [
-      { id: 3, marca: "Chevrolet", modelo: "Onix", placa: "GHI-9012", ano: "2021", cor: "Preto" }
-    ]
-  },
-  { id: 3, nome: "Pedro Oliveira", telefone: "(11) 77777-7777", email: "pedro@email.com" },
-];
-
-const marcasMock: Marca[] = [
-  { id: 1, nome: "Honda" },
-  { id: 2, nome: "Toyota" },
-  { id: 3, nome: "Chevrolet" },
-  { id: 4, nome: "Hyundai" },
-  { id: 5, nome: "Volkswagen" },
-  { id: 6, nome: "Ford" },
-];
-
-const modelosMock: Modelo[] = [
-  { id: 1, marcaId: 1, nome: "Civic" },
-  { id: 2, marcaId: 1, nome: "Fit" },
-  { id: 3, marcaId: 1, nome: "HR-V" },
-  { id: 4, marcaId: 2, nome: "Corolla" },
-  { id: 5, marcaId: 2, nome: "Yaris" },
-  { id: 6, marcaId: 3, nome: "Onix" },
-  { id: 7, marcaId: 3, nome: "Prisma" },
-  { id: 8, marcaId: 4, nome: "HB20" },
-  { id: 9, marcaId: 5, nome: "Gol" },
-  { id: 10, marcaId: 5, nome: "Polo" },
-  { id: 11, marcaId: 6, nome: "Ka" },
-];
-
-const funcionariosMock: Funcionario[] = [
-  { id: 1, nome: "Carlos Santos", telefone: "(11) 95555-5555", email: "carlos@oficina.com", tipo: "Mecanico", tipoContratacao: "CLT", valorDespesa: 3500, cpf: "123.456.789-00", dataAdmissao: "01/01/2023" },
-  { id: 2, nome: "Roberto Lima", telefone: "(11) 94444-4444", email: "roberto@oficina.com", tipo: "Mecanico", tipoContratacao: "CLT", valorDespesa: 3200, cpf: "234.567.890-11", dataAdmissao: "15/03/2023" },
-  { id: 3, nome: "José Ferreira", telefone: "(11) 93333-3333", email: "jose@oficina.com", tipo: "Mecanico", tipoContratacao: "PJ", valorDespesa: 2800, cpf: "345.678.901-22", dataAdmissao: "01/06/2023" },
-  { id: 4, nome: "Ana Silva", telefone: "(11) 92222-2222", email: "ana@oficina.com", tipo: "Recepcionista", tipoContratacao: "CLT", valorDespesa: 2200, cpf: "456.789.012-33", dataAdmissao: "01/02/2024" },
-  { id: 5, nome: "Maria Costa", telefone: "(11) 91111-1111", email: "maria@oficina.com", tipo: "Recepcionista", tipoContratacao: "CLT", valorDespesa: 2200, cpf: "567.890.123-44", dataAdmissao: "01/04/2024" },
-  { id: 6, nome: "João Pereira", telefone: "(11) 90000-0000", email: "joao@oficina.com", tipo: "Gerente", tipoContratacao: "CLT", valorDespesa: 5000, cpf: "678.901.234-55", dataAdmissao: "01/01/2022" },
-];
-
 export default function OrdemServicoPage() {
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -135,11 +74,27 @@ export default function OrdemServicoPage() {
   const [isModeloModalOpen, setIsModeloModalOpen] = useState(false);
   const [editingOrdemId, setEditingOrdemId] = useState<number | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
-  const [clientes, setClientes] = useState<Cliente[]>(clientesMock);
-  const [marcas, setMarcas] = useState<Marca[]>(marcasMock);
-  const [modelos, setModelos] = useState<Modelo[]>(modelosMock);
-  const funcionarios = funcionariosMock;
+  
+  // Dados carregados do backend
+  const [clientes, setClientes] = useState<Cliente[]>([]);
+  const [marcas, setMarcas] = useState<Marca[]>([]); // TODO: Criar serviço para marcas quando backend suportar
+  const [modelos, setModelos] = useState<Modelo[]>([]); // TODO: Criar serviço para modelos quando backend suportar
+  const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
+  const [servicos, setServicos] = useState<Servico[]>([]);
   const mecanicos = funcionarios.filter(f => f.tipo === "Mecanico");
+
+  // Configurações financeiras (normalmente viria do backend ou contexto)
+  const [configuracoesFinanceiras] = useState<ConfiguracoesFinanceiras>({
+    valoresOperacionais: [
+      { id: 1, descricao: "Conta de Luz", valor: 500.00 },
+      { id: 2, descricao: "Aluguel", valor: 2000.00 },
+      { id: 3, descricao: "Água", valor: 150.00 },
+      { id: 4, descricao: "Internet", valor: 100.00 },
+      { id: 5, descricao: "Taxas Locais", valor: 250.00 },
+    ],
+    mediaAtendimentosMensais: 10,
+    margemLucroPorAtendimento: 10,
+  });
   
   const [formData, setFormData] = useState({
     cliente: "",
@@ -226,87 +181,417 @@ export default function OrdemServicoPage() {
     { id: 1, descricao: "", quantidade: "", valorUnitario: "", valorTotal: "" },
   ]);
 
-  const [ordens, setOrdens] = useState<OrdemServico[]>([
-    { 
-      id: 1, 
-      numero: "OS-001", 
-      cliente: "João Silva", 
-      telefone: "(11) 99999-9999",
-      email: "joao@email.com",
-      marcaVeiculo: "Honda",
-      modeloVeiculo: "Civic",
-      placa: "ABC-1234",
-      ano: "2020",
-      cor: "Prata",
-      descricaoProblema: "Barulho no motor ao acelerar",
-      prioridade: Prioridade.ALTA,
-      status: StatusOrdemServico.EM_ANDAMENTO,
-      dataEntrada: "01/03/2025",
-      dataPrevisao: "05/03/2025",
-      mecanico: "Carlos Santos",
-      observacoes: "Troca de óleo também necessário",
-      valorTotal: 450.00
-    },
-    { 
-      id: 2, 
-      numero: "OS-002", 
-      cliente: "Maria Santos", 
-      telefone: "(11) 88888-8888",
-      email: "maria@email.com",
-      marcaVeiculo: "Toyota",
-      modeloVeiculo: "Corolla",
-      placa: "XYZ-5678",
-      ano: "2019",
-      cor: "Branco",
-      descricaoProblema: "Freios fazendo barulho",
-      prioridade: Prioridade.MEDIA,
-      status: StatusOrdemServico.AGUARDANDO_PECAS,
-      dataEntrada: "28/02/2025",
-      dataPrevisao: "04/03/2025",
-      mecanico: "Ana Costa",
-      observacoes: "Aguardando pastilhas de freio",
-      valorTotal: 320.00
-    },
-    { 
-      id: 3, 
-      numero: "OS-003", 
-      cliente: "Pedro Oliveira", 
-      telefone: "(11) 77777-7777",
-      email: "pedro@email.com",
-      marcaVeiculo: "Chevrolet",
-      modeloVeiculo: "Onix",
-      placa: "DEF-9012",
-      ano: "2021",
-      cor: "Preto",
-      descricaoProblema: "Revisão básica",
-      prioridade: Prioridade.BAIXA,
-      status: StatusOrdemServico.FINALIZADO,
-      dataEntrada: "27/02/2025",
-      dataPrevisao: "01/03/2025",
-      mecanico: "Carlos Santos",
-      observacoes: "Revisão completa realizada",
-      valorTotal: 180.00
-    },
-  ]);
+  const api = useApi();
+  const { empresaId } = api; // Extrai empresaId do api
+  const { token } = useAuth(); // Pega token do contexto de auth
+  const [carregando, setCarregando] = useState(false);
+  const [erro, setErro] = useState<string | null>(null);
+
+  const [statusFiltro, setStatusFiltro] = useState<StatusOrdemServico | null>(null);
+  const [paginaAtualBackend, setPaginaAtualBackend] = useState(0); // 0-indexed para backend
+  const [itensPorPagina, setItensPorPagina] = useState(10);
+  const [totalElementos, setTotalElementos] = useState(0);
+  const [totalPaginas, setTotalPaginas] = useState(0);
+
+  // Dados carregados do backend
+  const [ordens, setOrdens] = useState<OrdemServico[]>([]);
+
+  // Funções de conversão entre API e frontend
+  const converterAPIparaFrontend = (api: OrdemServicoAPI): OrdemServico => {
+    return {
+      id: api.id,
+      numero: api.numero,
+      cliente: api.cliente,
+      telefone: api.telefone,
+      email: api.email,
+      marcaVeiculo: api.marcaVeiculo,
+      modeloVeiculo: api.modeloVeiculo,
+      placa: api.placa,
+      ano: api.ano,
+      cor: api.cor,
+      descricaoProblema: api.descricaoProblema,
+      prioridade: api.prioridade as Prioridade,
+      status: api.status as StatusOrdemServico,
+      dataEntrada: api.dataEntrada,
+      dataPrevisao: api.dataPrevisao,
+      mecanico: api.mecanico,
+      observacoes: api.observacoes,
+      valorTotal: api.valorTotal,
+      itens: (api.itens || []).map(item => ({
+        id: item.id,
+        servicoId: item.servicoId,
+        descricao: item.descricao,
+        quantidade: item.quantidade,
+        valorUnitario: item.valorUnitario,
+        valorTotal: item.valorTotal,
+        tempoEstimado: item.tempoEstimado,
+      })),
+    };
+  };
+
+  const converterFrontendparaAPI = (ordem: OrdemServico): Omit<OrdemServicoAPI, "id" | "numero"> => {
+    return {
+      cliente: ordem.cliente,
+      telefone: ordem.telefone,
+      email: ordem.email,
+      marcaVeiculo: ordem.marcaVeiculo,
+      modeloVeiculo: ordem.modeloVeiculo,
+      placa: ordem.placa,
+      ano: ordem.ano,
+      cor: ordem.cor,
+      descricaoProblema: ordem.descricaoProblema,
+      prioridade: ordem.prioridade as "Baixa" | "Média" | "Alta",
+      status: ordem.status as "Orçamento" | "Em Andamento" | "Aguardando Peças" | "Finalizado" | "Cancelado",
+      dataEntrada: ordem.dataEntrada,
+      dataPrevisao: ordem.dataPrevisao,
+      mecanico: ordem.mecanico,
+      observacoes: ordem.observacoes,
+      valorTotal: ordem.valorTotal,
+      itens: (ordem.itens || []).map(item => ({
+        id: item.id,
+        servicoId: item.servicoId,
+        descricao: item.descricao,
+        quantidade: item.quantidade,
+        valorUnitario: item.valorUnitario,
+        valorTotal: item.valorTotal,
+        tempoEstimado: item.tempoEstimado,
+      })),
+    };
+  };
+
+  // Função para converter data DD/MM/YYYY para YYYY-MM-DD
+  const converterDataParaISO = (data: string): string => {
+    if (!data) {
+      const hoje = new Date();
+      return hoje.toISOString().split('T')[0];
+    }
+    try {
+      const [dia, mes, ano] = data.split("/");
+      return `${ano}-${mes}-${dia}`;
+    } catch {
+      const hoje = new Date();
+      return hoje.toISOString().split('T')[0];
+    }
+  };
+
+  // Função auxiliar para gerar conta a receber via API
+  const gerarContaReceber = async (ordem: OrdemServico) => {
+    // Não gerar conta se o valor total for zero ou negativo
+    if (!ordem.valorTotal || ordem.valorTotal <= 0) return;
+
+    try {
+      // Verificar se já existe conta a receber para esta ordem
+      const contas = await financeiroService.contasReceber.getAll(api, { page: 0, size: 100 });
+      const contaExistente = contas.content.find((c) => c.ordemServicoId === ordem.id);
+      if (contaExistente) return; // Já existe, não criar novamente
+
+      const dataVencimento = converterDataParaISO(ordem.dataPrevisao);
+
+      await financeiroService.contasReceber.create(api, {
+        descricao: `Ordem de Serviço ${ordem.numero}`,
+        cliente: ordem.cliente,
+        valor: ordem.valorTotal,
+        dataVencimento: dataVencimento,
+        recebido: false,
+        recorrencia: "NENHUMA",
+        ordemServicoId: ordem.id,
+        observacoes: `Gerado automaticamente da OS ${ordem.numero}`,
+      });
+    } catch (error) {
+      console.error("Erro ao gerar conta a receber:", error);
+    }
+  };
+
+  // Função auxiliar para excluir conta a receber via API
+  const excluirContaReceber = async (ordemId: number) => {
+    try {
+      const contas = await financeiroService.contasReceber.getAll(api, { page: 0, size: 100 });
+      const contaParaExcluir = contas.content.find((c) => c.ordemServicoId === ordemId);
+      if (contaParaExcluir) {
+        await financeiroService.contasReceber.delete(api, contaParaExcluir.id);
+      }
+    } catch (error) {
+      console.error("Erro ao excluir conta a receber:", error);
+    }
+  };
+
+  // Ref para evitar requisições simultâneas duplicadas
+  const carregandoRef = useRef(false);
+
+  // Carregar ordens do backend
+  const carregarOrdens = async () => {
+    // Evita requisições duplicadas simultâneas
+    if (carregandoRef.current) {
+      console.log("Requisição já em andamento, ignorando duplicata");
+      return;
+    }
+    
+    // Verifica se empresaId e token estão disponíveis antes de fazer a requisição
+    if (!empresaId || !token) {
+      console.warn("EmpresaId ou token não disponíveis, aguardando...", { empresaId, token: !!token });
+      return;
+    }
+
+    carregandoRef.current = true;
+    setCarregando(true);
+    setErro(null);
+    try {
+      console.log("Carregando ordens...", { 
+        page: paginaAtualBackend, 
+        size: itensPorPagina, 
+        empresaId,
+        baseUrl: api.baseUrl,
+        token: !!token,
+      });
+
+      const pagina = await ordemServicoService.getAll(api, {
+        page: paginaAtualBackend,
+        size: itensPorPagina,
+        sort: "dataEntrada,desc",
+      });
+      
+      console.log("Resposta recebida do backend:", pagina);
+      
+      // Verifica se a resposta tem a estrutura esperada
+      if (!pagina) {
+        console.error("Resposta do backend é null ou undefined");
+        setErro("Resposta inválida do servidor.");
+        return;
+      }
+
+      if (!pagina.content || !Array.isArray(pagina.content)) {
+        console.error("Resposta do backend não tem estrutura esperada:", {
+          temContent: !!pagina.content,
+          isArray: Array.isArray(pagina.content),
+          respostaCompleta: pagina
+        });
+        setErro("Formato de resposta inválido do servidor. Verifique o console para mais detalhes.");
+        return;
+      }
+
+      console.log(`Convertendo ${pagina.content.length} ordens...`);
+      const ordensConvertidas = pagina.content.map(converterAPIparaFrontend);
+      
+      // Aplicar filtro de status no frontend (quando o backend suportar, mover para query param)
+      const ordensFiltradas = statusFiltro 
+        ? ordensConvertidas.filter(os => os.status === statusFiltro)
+        : ordensConvertidas;
+      
+      console.log(`Ordens carregadas: ${ordensFiltradas.length} (filtradas de ${ordensConvertidas.length} total)`);
+      
+      setOrdens(ordensFiltradas);
+      setTotalElementos(pagina.totalElements || 0);
+      setTotalPaginas(pagina.totalPages || 0);
+    } catch (error) {
+      console.error("Erro ao carregar ordens:", error);
+      
+      let errorMessage = "Erro desconhecido ao carregar ordens de serviço";
+      
+      if (error instanceof Error) {
+        errorMessage = error.message;
+        
+        // Log adicional para debug (stack pode não estar disponível em todos os casos)
+        if (error.stack) {
+          console.error("Stack trace:", error.stack);
+        }
+      } else if (typeof error === "string") {
+        errorMessage = error;
+      }
+      
+      setErro(errorMessage);
+    } finally {
+      setCarregando(false);
+      carregandoRef.current = false;
+    }
+  };
+
+  useEffect(() => {
+    // Só carrega se empresaId e token estiverem disponíveis
+    if (empresaId && token) {
+      carregarOrdens();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [paginaAtualBackend, itensPorPagina, statusFiltro, empresaId, token]);
+
+  // Função para carregar clientes sob demanda (quando necessário)
+  const carregarClientes = async () => {
+    if (!api.empresaId || !token || clientes.length > 0) return; // Já carregou
+    
+    try {
+      const pagina = await clienteService.getAll(api, { page: 0, size: 1000 });
+      // Converte ClienteAPI para Cliente
+      const clientesConvertidos: Cliente[] = pagina.content.map((c: ClienteAPI) => ({
+        id: c.id,
+        nome: c.nome,
+        telefone: c.telefone,
+        email: c.email,
+        cpf: c.cpf,
+        endereco: c.endereco,
+        veiculos: (c.veiculos || []).map(v => ({
+          id: v.id,
+          marca: v.marca,
+          modelo: v.modelo,
+          placa: v.placa,
+          ano: v.ano,
+          cor: v.cor,
+        })),
+      }));
+      setClientes(clientesConvertidos);
+    } catch (error) {
+      console.error("Erro ao carregar clientes:", error);
+      setClientes([]);
+    }
+  };
+
+  // Função para carregar funcionários sob demanda (quando necessário)
+  const carregarFuncionarios = async () => {
+    if (!api.empresaId || !token || funcionarios.length > 0) return; // Já carregou
+    
+    try {
+      const pagina = await funcionarioService.getAll(api, { page: 0, size: 1000 });
+      // Converte FuncionarioAPI para Funcionario
+      const funcionariosConvertidos: Funcionario[] = pagina.content.map((f: FuncionarioAPI) => ({
+        id: f.id,
+        nome: f.nome,
+        telefone: f.telefone,
+        email: f.email,
+        tipo: f.tipo,
+        tipoContratacao: f.tipoContratacao,
+        valorDespesa: f.valorDespesa,
+        cpf: f.cpf,
+        dataAdmissao: f.dataAdmissao,
+      }));
+      setFuncionarios(funcionariosConvertidos);
+    } catch (error) {
+      console.error("Erro ao carregar funcionários:", error);
+      setFuncionarios([]);
+    }
+  };
+
+  // Função para carregar serviços sob demanda (quando necessário)
+  const carregarServicos = async () => {
+    if (!api.empresaId || !token || servicos.length > 0) return; // Já carregou
+    
+    try {
+      const pagina = await servicoService.getAll(api, { page: 0, size: 1000 });
+      // Converte ServicoAPI para Servico
+      const servicosConvertidos: Servico[] = pagina.content.map((s: ServicoAPI) => ({
+        id: s.id,
+        nome: s.nome,
+        descricao: s.descricao,
+        tempoEstimadoHoras: s.tempoEstimadoHoras,
+        tipoAplicacao: s.tipoAplicacao,
+        marcaId: s.marcaId,
+        modeloId: s.modeloId,
+      }));
+      setServicos(servicosConvertidos);
+    } catch (error) {
+      console.error("Erro ao carregar serviços:", error);
+      setServicos([]);
+    }
+  };
+
+  // O useEffect acima já recarrega os dados automaticamente quando empresaId muda
+  useEffect(() => {
+    if (empresaId) {
+      setPaginaAtualBackend(0);
+    }
+  }, [empresaId]);
+
+  useEffect(() => {
+    // Quando mudar o tamanho da página ou o filtro, voltar para página 0
+    setPaginaAtualBackend(0);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [itensPorPagina, statusFiltro]);
 
   const handleInputChange = (field: string, value: string) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      const newData = { ...prev, [field]: value };
+      
+      // Se mudou o funcionário, recalcula os itens que têm serviço selecionado
+      if (field === "mecanico") {
+        // Usa o novo valor do mecanico para recalcular
+        const funcionarioSelecionado = mecanicos.find(m => m.nome === value);
+        if (funcionarioSelecionado) {
+          setTimeout(() => {
+            setItens((prevItens) =>
+              prevItens.map((item) => {
+                if (item.servicoId && item.tempoEstimado) {
+                  const servico = servicos.find(s => s.id === item.servicoId);
+                  if (servico) {
+                    const calculo = calcularValorEstimadoServico(
+                      servico,
+                      funcionarioSelecionado,
+                      configuracoesFinanceiras
+                    );
+                    return {
+                      ...item,
+                      valorUnitario: calculo.valorTotal.toFixed(2),
+                      valorTotal: (parseFloat(item.quantidade) || 1) * calculo.valorTotal,
+                    };
+                  }
+                }
+                return item;
+              })
+            );
+          }, 0);
+        }
+      }
+      
+      return newData;
+    });
   };
 
   const handleItemChange = (
     id: number,
     field: keyof ItemServico,
-    value: string
+    value: string | number
   ) => {
     setItens((prev) =>
       prev.map((item) => {
         if (item.id === id) {
           const updated = { ...item, [field]: value };
+          
+          // Se selecionou um serviço, preenche automaticamente
+          if (field === "servicoId") {
+            if (value) {
+              const servicoSelecionado = servicos.find(s => s.id === parseInt(value as string));
+              if (servicoSelecionado) {
+                updated.descricao = servicoSelecionado.nome;
+                updated.tempoEstimado = servicoSelecionado.tempoEstimadoHoras;
+                updated.quantidade = "1";
+                
+                // Calcula o valor se tiver funcionário selecionado
+                // Usa formData.mecanico ou o mecanico que pode ter sido atualizado
+                const mecanicoAtual = formData.mecanico;
+                if (mecanicoAtual) {
+                  const funcionarioSelecionado = mecanicos.find(m => m.nome === mecanicoAtual);
+                  if (funcionarioSelecionado) {
+                    const calculo = calcularValorEstimadoServico(
+                      servicoSelecionado,
+                      funcionarioSelecionado,
+                      configuracoesFinanceiras
+                    );
+                    updated.valorUnitario = calculo.valorTotal.toFixed(2);
+                    updated.valorTotal = calculo.valorTotal.toFixed(2);
+                  }
+                }
+              }
+            } else {
+              // Se limpou o serviço, limpa também os campos relacionados
+              updated.tempoEstimado = undefined;
+              updated.valorUnitario = "";
+              updated.valorTotal = "0.00";
+            }
+          }
+          
+          // Recalcula se mudou quantidade ou valor unitário manualmente
           if (field === "quantidade" || field === "valorUnitario") {
             const qtd = parseFloat(updated.quantidade) || 0;
             const valor = parseFloat(updated.valorUnitario) || 0;
             updated.valorTotal = (qtd * valor).toFixed(2);
           }
+          
           return updated;
         }
         return item;
@@ -328,23 +613,90 @@ export default function OrdemServicoPage() {
   };
 
   const handleEditInputChange = (field: string, value: string) => {
-    setEditFormData((prev) => ({ ...prev, [field]: value }));
+    setEditFormData((prev) => {
+      const newData = { ...prev, [field]: value };
+      
+      // Se mudou o funcionário, recalcula os itens que têm serviço selecionado
+      if (field === "mecanico") {
+        const funcionarioSelecionado = mecanicos.find(m => m.nome === value);
+        if (funcionarioSelecionado) {
+          setTimeout(() => {
+            setEditItens((prevItens) =>
+              prevItens.map((item) => {
+                if (item.servicoId && item.tempoEstimado) {
+                  const servico = servicos.find(s => s.id === item.servicoId);
+                  if (servico) {
+                    const calculo = calcularValorEstimadoServico(
+                      servico,
+                      funcionarioSelecionado,
+                      configuracoesFinanceiras
+                    );
+                    return {
+                      ...item,
+                      valorUnitario: calculo.valorTotal.toFixed(2),
+                      valorTotal: (parseFloat(item.quantidade) || 1) * calculo.valorTotal,
+                    };
+                  }
+                }
+                return item;
+              })
+            );
+          }, 0);
+        }
+      }
+      
+      return newData;
+    });
   };
 
   const handleEditItemChange = (
     id: number,
     field: keyof ItemServico,
-    value: string
+    value: string | number
   ) => {
     setEditItens((prev) =>
       prev.map((item) => {
         if (item.id === id) {
           const updated = { ...item, [field]: value };
+          
+          // Se selecionou um serviço, preenche automaticamente
+          if (field === "servicoId") {
+            if (value) {
+              const servicoSelecionado = servicos.find(s => s.id === parseInt(value as string));
+              if (servicoSelecionado) {
+                updated.descricao = servicoSelecionado.nome;
+                updated.tempoEstimado = servicoSelecionado.tempoEstimadoHoras;
+                updated.quantidade = "1";
+                
+                // Calcula o valor se tiver funcionário selecionado
+                if (editFormData.mecanico) {
+                  const funcionarioSelecionado = mecanicos.find(m => m.nome === editFormData.mecanico);
+                  if (funcionarioSelecionado) {
+                    const calculo = calcularValorEstimadoServico(
+                      servicoSelecionado,
+                      funcionarioSelecionado,
+                      configuracoesFinanceiras
+                    );
+                    updated.valorUnitario = calculo.valorTotal.toFixed(2);
+                    updated.valorTotal = calculo.valorTotal.toFixed(2);
+                  }
+                }
+              }
+            } else {
+              // Se limpou o serviço, limpa também os campos relacionados
+              updated.tempoEstimado = undefined;
+              updated.valorUnitario = "";
+              updated.valorTotal = "0.00";
+            }
+          }
+          
+          // Recalcula se mudou quantidade ou valor unitário manualmente
           if (field === "quantidade" || field === "valorUnitario") {
             const qtd = parseFloat(updated.quantidade) || 0;
             const valor = parseFloat(updated.valorUnitario) || 0;
             updated.valorTotal = (qtd * valor).toFixed(2);
           }
+          
           return updated;
         }
         return item;
@@ -576,10 +928,12 @@ export default function OrdemServicoPage() {
     setIsModeloModalOpen(true);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const novoId = ordens.length + 1;
-    const numeroOS = `OS-${String(novoId).padStart(3, "0")}`;
+    setCarregando(true);
+    setErro(null);
+
+    try {
     const hoje = new Date().toLocaleDateString('pt-BR');
     
     const valorTotal = itens.reduce((sum, item) => {
@@ -589,8 +943,8 @@ export default function OrdemServicoPage() {
     }, 0);
 
     const novaOrdem: OrdemServico = {
-      id: novoId,
-      numero: numeroOS,
+        id: 0, // Será definido pelo backend
+        numero: "", // Será gerado pelo backend
       cliente: formData.cliente,
       telefone: formData.telefone,
       email: formData.email,
@@ -601,7 +955,7 @@ export default function OrdemServicoPage() {
       cor: formData.cor,
       descricaoProblema: formData.descricaoProblema,
       prioridade: formData.prioridade as Prioridade,
-      status: StatusOrdemServico.ORCAMENTO,
+        status: StatusOrdemServico.ORCAMENTO, // Novas ordens sempre começam como Orçamento
       dataEntrada: hoje,
       dataPrevisao: "",
       mecanico: formData.mecanico,
@@ -610,7 +964,12 @@ export default function OrdemServicoPage() {
       itens: itens.filter(item => item.descricao && item.quantidade && item.valorUnitario)
     };
 
-    setOrdens([...ordens, novaOrdem]);
+      const dadosAPI = converterFrontendparaAPI(novaOrdem);
+      await ordemServicoService.create(api, dadosAPI);
+
+      // Recarregar lista
+      await carregarOrdens();
+
     setIsModalOpen(false);
     setFormData({
       cliente: "",
@@ -631,11 +990,24 @@ export default function OrdemServicoPage() {
     setModeloSearchTerm("");
     setSelectedClienteId(null);
     setItens([{ id: 1, descricao: "", quantidade: "", valorUnitario: "", valorTotal: "" }]);
+    } catch (error) {
+      console.error("Erro ao criar ordem:", error);
+      setErro("Erro ao criar ordem de serviço. Tente novamente.");
+    } finally {
+      setCarregando(false);
+    }
   };
 
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingOrdemId) return;
+
+    setCarregando(true);
+    setErro(null);
+
+    try {
+      const ordemOriginal = ordens.find(os => os.id === editingOrdemId);
+      if (!ordemOriginal) return;
 
     const valorTotal = editItens.reduce((sum, item) => {
       const qtd = parseFloat(item.quantidade) || 0;
@@ -643,8 +1015,11 @@ export default function OrdemServicoPage() {
       return sum + (qtd * valor);
     }, 0);
 
+      const novoStatus = editFormData.status as StatusOrdemServico;
+      const statusMudou = ordemOriginal.status !== novoStatus;
+
     const ordemAtualizada: OrdemServico = {
-      ...ordens.find(os => os.id === editingOrdemId)!,
+        ...ordemOriginal,
       cliente: editFormData.cliente,
       telefone: editFormData.telefone,
       email: editFormData.email,
@@ -655,21 +1030,95 @@ export default function OrdemServicoPage() {
       cor: editFormData.cor,
       descricaoProblema: editFormData.descricaoProblema,
       prioridade: editFormData.prioridade as Prioridade,
-      status: editFormData.status as StatusOrdemServico,
+        status: novoStatus,
       mecanico: editFormData.mecanico,
       observacoes: editFormData.observacoes,
       valorTotal: valorTotal,
       itens: editItens.filter(item => item.descricao && item.quantidade && item.valorUnitario)
     };
 
-    setOrdens(ordens.map(os => os.id === editingOrdemId ? ordemAtualizada : os));
+      const dadosAPI = converterFrontendparaAPI(ordemAtualizada);
+      await ordemServicoService.update(api, editingOrdemId, dadosAPI);
+
+      // Se o status mudou, verificar se precisa gerar ou excluir conta a receber
+      if (statusMudou) {
+        // Se estava em "Orçamento" e mudou para outro status (exceto Cancelado), gerar conta a receber
+        if (ordemOriginal.status === StatusOrdemServico.ORCAMENTO && novoStatus !== StatusOrdemServico.ORCAMENTO && novoStatus !== StatusOrdemServico.CANCELADO && valorTotal > 0) {
+          await gerarContaReceber(ordemAtualizada);
+        }
+
+        // Se mudou para "Cancelado", excluir a conta a receber relacionada
+        if (novoStatus === StatusOrdemServico.CANCELADO) {
+          await excluirContaReceber(editingOrdemId);
+        }
+      }
+
+      // Recarregar lista
+      await carregarOrdens();
+
     setIsEditModalOpen(false);
     setEditingOrdemId(null);
+    } catch (error) {
+      console.error("Erro ao atualizar ordem:", error);
+      setErro("Erro ao atualizar ordem de serviço. Tente novamente.");
+    } finally {
+      setCarregando(false);
+    }
   };
 
-  const handleDelete = (id: number) => {
-    if (confirm("Tem certeza que deseja excluir esta ordem de serviço?")) {
-      setOrdens(ordens.filter((os) => os.id !== id));
+  const alterarStatusOrdemServico = async (ordemId: number, novoStatus: StatusOrdemServico) => {
+    setCarregando(true);
+    setErro(null);
+
+    try {
+      const ordemAtual = ordens.find((ordem) => ordem.id === ordemId);
+      if (!ordemAtual) return;
+
+      // Atualizar status no backend
+      await ordemServicoService.updateStatus(api, ordemId, novoStatus as "Orçamento" | "Em Andamento" | "Aguardando Peças" | "Finalizado" | "Cancelado");
+
+      // Se estava em "Orçamento" e mudou para outro status (exceto Cancelado), gerar conta a receber
+      if (ordemAtual.status === StatusOrdemServico.ORCAMENTO && novoStatus !== StatusOrdemServico.ORCAMENTO && novoStatus !== StatusOrdemServico.CANCELADO && ordemAtual.valorTotal > 0) {
+        // Criar uma cópia da ordem com o novo status para gerar a conta
+        const ordemComNovoStatus = { ...ordemAtual, status: novoStatus };
+        await gerarContaReceber(ordemComNovoStatus);
+      }
+      
+      // Se mudou para "Cancelado", excluir a conta a receber relacionada
+      if (novoStatus === StatusOrdemServico.CANCELADO) {
+        await excluirContaReceber(ordemId);
+      }
+
+      // Recarregar lista
+      await carregarOrdens();
+    } catch (error) {
+      console.error("Erro ao alterar status:", error);
+      setErro("Erro ao alterar status da ordem. Tente novamente.");
+    } finally {
+      setCarregando(false);
+    }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (!confirm("Tem certeza que deseja excluir esta ordem de serviço?")) return;
+
+    setCarregando(true);
+    setErro(null);
+
+    try {
+      // Excluir conta a receber relacionada, se existir
+      await excluirContaReceber(id);
+      
+      // Excluir ordem no backend
+      await ordemServicoService.delete(api, id);
+
+      // Recarregar lista
+      await carregarOrdens();
+    } catch (error) {
+      console.error("Erro ao excluir ordem:", error);
+      setErro("Erro ao excluir ordem de serviço. Tente novamente.");
+    } finally {
+      setCarregando(false);
     }
   };
 
@@ -697,6 +1146,10 @@ export default function OrdemServicoPage() {
     }
     setIsEditMode(true);
     setIsEditModalOpen(true);
+    // Carrega dados necessários quando abrir o modal de edição
+    carregarClientes();
+    carregarFuncionarios();
+    carregarServicos();
   };
 
   const handleView = (ordem: OrdemServico) => {
@@ -723,6 +1176,10 @@ export default function OrdemServicoPage() {
     }
     setIsEditMode(false);
     setIsEditModalOpen(true);
+    // Carrega dados necessários quando abrir o modal de edição
+    carregarClientes();
+    carregarFuncionarios();
+    carregarServicos();
   };
 
   const getStatusIcon = (status: StatusOrdemServico) => {
@@ -798,6 +1255,25 @@ export default function OrdemServicoPage() {
       )
     : modelosFiltrados;
 
+  // Calcular ordens filtradas
+  // Contar ordens por status para os cards (usando dados carregados)
+  const contarPorStatus = (status: StatusOrdemServico) => {
+    // Nota: Este é um cálculo local dos dados carregados
+    // Para valores exatos, o backend deveria retornar estatísticas
+    return ordens.filter(os => os.status === status).length;
+  };
+
+  // Resetar para página 0 quando mudar filtro ou quantidade por página
+  const handleFiltroChange = (novoFiltro: StatusOrdemServico | null) => {
+    setStatusFiltro(novoFiltro);
+    setPaginaAtualBackend(0);
+  };
+
+  const handleItensPorPaginaChange = (novaQuantidade: number) => {
+    setItensPorPagina(novaQuantidade);
+    setPaginaAtualBackend(0);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -805,26 +1281,71 @@ export default function OrdemServicoPage() {
           <h1 className="text-3xl font-bold tracking-tight">Ordens de Serviço</h1>
           <p className="text-muted-foreground">Gestão de ordens de serviço da oficina</p>
         </div>
-        <Button onClick={() => setIsModalOpen(true)} className="gap-2">
+        <Button onClick={() => {
+          setIsModalOpen(true);
+          // Carrega dados necessários quando abrir o modal
+          carregarClientes();
+          carregarFuncionarios();
+          carregarServicos();
+        }} className="gap-2">
           <Plus className="h-4 w-4" />
           Nova Ordem
         </Button>
       </div>
 
-      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+      <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
+        {/* Card Todos */}
+        <Card 
+          className={`cursor-pointer transition-all hover:shadow-md ${
+            statusFiltro === null 
+              ? "ring-2 ring-primary shadow-md" 
+              : ""
+          }`}
+          onClick={() => handleFiltroChange(null)}
+        >
+          <CardContent className="p-6">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-muted-foreground">Todos</p>
+                <p className="text-2xl font-bold">{totalElementos}</p>
+              </div>
+              <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${
+                statusFiltro === null ? "bg-primary" : "bg-primary/10"
+              }`}>
+                <ClipboardCheck className={`h-6 w-6 ${
+                  statusFiltro === null ? "text-primary-foreground" : "text-primary"
+                }`} />
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        
         {Object.values(StatusOrdemServico).map((status) => {
-          const count = ordens.filter(os => os.status === status).length;
+          const count = contarPorStatus(status);
           const StatusIcon = getStatusIcon(status);
+          const isSelected = statusFiltro === status;
           return (
-            <Card key={status}>
+            <Card 
+              key={status}
+              className={`cursor-pointer transition-all hover:shadow-md ${
+                isSelected 
+                  ? "ring-2 ring-primary shadow-md" 
+                  : ""
+              }`}
+              onClick={() => handleFiltroChange(isSelected ? null : status)}
+            >
               <CardContent className="p-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <p className="text-sm font-medium text-muted-foreground">{status}</p>
                     <p className="text-2xl font-bold">{count}</p>
                   </div>
-                  <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                    <StatusIcon className="h-6 w-6 text-primary" />
+                  <div className={`flex h-12 w-12 items-center justify-center rounded-lg ${
+                    isSelected ? "bg-primary" : "bg-primary/10"
+                  }`}>
+                    <StatusIcon className={`h-6 w-6 ${
+                      isSelected ? "text-primary-foreground" : "text-primary"
+                    }`} />
                   </div>
                 </div>
               </CardContent>
@@ -835,11 +1356,45 @@ export default function OrdemServicoPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Lista de Ordens de Serviço</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>
+              Lista de Ordens de Serviço
+              {statusFiltro && (
+                <span className="ml-2 text-sm font-normal text-muted-foreground">
+                  - Filtrando por: {statusFiltro}
+                </span>
+              )}
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-muted-foreground">Itens por página:</label>
+              <select
+                value={itensPorPagina}
+                onChange={(e) => handleItensPorPaginaChange(Number(e.target.value))}
+                className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {ordens.map((ordem) => {
+            {carregando && (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">Carregando...</p>
+              </div>
+            )}
+            {erro && (
+              <div className="rounded-lg border border-red-200 bg-red-50 dark:bg-red-900/20 p-4">
+                <p className="text-sm text-red-800 dark:text-red-400">{erro}</p>
+              </div>
+            )}
+            {!carregando && !erro && ordens.length > 0 ? (
+              ordens.map((ordem) => {
               const StatusIcon = getStatusIcon(ordem.status);
               return (
                 <div
@@ -854,9 +1409,19 @@ export default function OrdemServicoPage() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <p className="font-medium text-lg">{ordem.numero}</p>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getStatusColor(ordem.status)}`}>
-                            {ordem.status}
-                          </span>
+                          <select
+                            value={ordem.status}
+                            onChange={(e) => alterarStatusOrdemServico(ordem.id, e.target.value as StatusOrdemServico)}
+                            onClick={(e) => e.stopPropagation()}
+                            style={{ textAlign: 'center', textAlignLast: 'center' }}
+                            className={`status-select font-semibold rounded-full px-3 py-1 border-none cursor-pointer text-xs ${getStatusColor(ordem.status)}`}
+                          >
+                            <option value={StatusOrdemServico.ORCAMENTO}>Orçamento</option>
+                            <option value={StatusOrdemServico.EM_ANDAMENTO}>Em Andamento</option>
+                            <option value={StatusOrdemServico.AGUARDANDO_PECAS}>Aguardando Peças</option>
+                            <option value={StatusOrdemServico.FINALIZADO}>Finalizado</option>
+                            <option value={StatusOrdemServico.CANCELADO}>Cancelado</option>
+                          </select>
                           <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getPrioridadeColor(ordem.prioridade)}`}>
                             {ordem.prioridade}
                           </span>
@@ -898,7 +1463,7 @@ export default function OrdemServicoPage() {
                     </div>
                     <div className="flex items-center gap-2">
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         size="icon"
                         onClick={() => handleView(ordem)}
                         title="Visualizar"
@@ -906,7 +1471,7 @@ export default function OrdemServicoPage() {
                         <Eye className="h-4 w-4" />
                       </Button>
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         size="icon"
                         onClick={() => handleEdit(ordem)}
                         title="Editar"
@@ -914,7 +1479,7 @@ export default function OrdemServicoPage() {
                         <Edit2 className="h-4 w-4" />
                       </Button>
                       <Button
-                        variant="outline"
+                        variant="ghost"
                         size="icon"
                         onClick={() => handleDelete(ordem.id)}
                         title="Excluir"
@@ -925,8 +1490,75 @@ export default function OrdemServicoPage() {
                   </div>
                 </div>
               );
+              })
+            ) : (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">
+                  {statusFiltro 
+                    ? `Nenhuma ordem de serviço encontrada com status "${statusFiltro}"`
+                    : "Nenhuma ordem de serviço cadastrada"
+                  }
+                </p>
+              </div>
+            )}
+          </div>
+
+          {/* Controles de Paginação */}
+          {!carregando && !erro && totalElementos > 0 && (
+            <div className="flex items-center justify-between border-t pt-4 mt-4">
+              <div className="text-sm text-muted-foreground">
+                Mostrando {ordens.length > 0 ? ((paginaAtualBackend * itensPorPagina) + 1) : 0} até {Math.min((paginaAtualBackend + 1) * itensPorPagina, totalElementos)} de {totalElementos} ordens
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPaginaAtualBackend(prev => Math.max(0, prev - 1))}
+                  disabled={paginaAtualBackend === 0 || carregando}
+                  className="gap-2"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Anterior
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPaginas }, (_, i) => i).map((pagina) => {
+                    // Mostrar apenas páginas próximas à atual
+                    if (
+                      pagina === 0 ||
+                      pagina === totalPaginas - 1 ||
+                      (pagina >= paginaAtualBackend - 1 && pagina <= paginaAtualBackend + 1)
+                    ) {
+                      return (
+                        <Button
+                          key={pagina}
+                          variant={pagina === paginaAtualBackend ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setPaginaAtualBackend(pagina)}
+                          disabled={carregando}
+                          className="min-w-[2.5rem]"
+                        >
+                          {pagina + 1}
+                        </Button>
+                      );
+                    } else if (pagina === paginaAtualBackend - 2 || pagina === paginaAtualBackend + 2) {
+                      return <span key={pagina} className="px-2 text-muted-foreground">...</span>;
+                    }
+                    return null;
             })}
           </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPaginaAtualBackend(prev => Math.min(totalPaginas - 1, prev + 1))}
+                  disabled={paginaAtualBackend >= totalPaginas - 1 || carregando}
+                  className="gap-2"
+                >
+                  Próxima
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -955,7 +1587,11 @@ export default function OrdemServicoPage() {
               />
               <button
                 type="button"
-                onClick={() => setIsClienteModalOpen(true)}
+                onClick={() => {
+                  setIsClienteModalOpen(true);
+                  // Carrega clientes quando abrir o modal de cliente
+                  carregarClientes();
+                }}
                 className="absolute right-2 top-2 text-primary hover:text-primary/80 transition-colors"
               >
                 <Plus className="h-5 w-5" />
@@ -1225,29 +1861,81 @@ export default function OrdemServicoPage() {
               </Button>
             </div>
             <div className="space-y-3">
-              {itens.map((item) => (
-                <div key={item.id} className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-5">
-                    <label className="block text-xs font-medium mb-1">Descrição</label>
+              {itens.map((item) => {
+                const servicoSelecionado = item.servicoId ? servicos.find(s => s.id === item.servicoId) : null;
+                const funcionarioSelecionado = formData.mecanico ? mecanicos.find(m => m.nome === formData.mecanico) : null;
+                let detalhesCalculo = null;
+                
+                if (servicoSelecionado && funcionarioSelecionado) {
+                  detalhesCalculo = calcularValorEstimadoServico(
+                    servicoSelecionado,
+                    funcionarioSelecionado,
+                    configuracoesFinanceiras
+                  );
+                }
+
+                return (
+                  <div key={item.id} className="border border-border rounded-lg p-3 space-y-2">
+                    <div className="grid grid-cols-12 gap-2 items-end">
+                      <div className="col-span-6">
+                        <label className="block text-xs font-medium mb-1">Serviço</label>
+                        <select
+                          value={item.servicoId || ""}
+                          onChange={(e) => handleItemChange(item.id, "servicoId", e.target.value)}
+                          onFocus={() => carregarServicos()}
+                          className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                        >
+                          <option value="">Selecione um serviço ou digite manualmente</option>
+                          {servicos.map((servico) => (
+                            <option key={servico.id} value={servico.id}>
+                              {servico.nome} ({servico.tempoEstimadoHoras}h)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="col-span-6">
+                        <label className="block text-xs font-medium mb-1">Descrição (ou digite manualmente)</label>
                     <input
                       type="text"
                       value={item.descricao}
                       onChange={(e) => handleItemChange(item.id, "descricao", e.target.value)}
                       className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
                       placeholder="Serviço ou peça"
+                          disabled={!!item.servicoId}
                     />
                   </div>
+                    </div>
+                    
+                    {servicoSelecionado && (
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-md p-2 text-xs">
+                        <p className="text-blue-800 dark:text-blue-300">
+                          <Clock className="h-3 w-3 inline mr-1" />
+                          <strong>Tempo estimado:</strong> {servicoSelecionado.tempoEstimadoHoras}h
+                          {funcionarioSelecionado && detalhesCalculo && (
+                            <>
+                              {" • "}<strong>Valor/hora:</strong> R$ {detalhesCalculo.valorHoraFuncionario.toFixed(2)}
+                              {" • "}<strong>Custo médio:</strong> R$ {detalhesCalculo.custoMedio.toFixed(2)}
+                              {" • "}<strong>Mão de obra:</strong> R$ {detalhesCalculo.valorMaoObra.toFixed(2)}
+                              {" • "}<strong>Margem ({configuracoesFinanceiras.margemLucroPorAtendimento}%):</strong> R$ {detalhesCalculo.margemLucro.toFixed(2)}
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-12 gap-2 items-end">
                   <div className="col-span-2">
                     <label className="block text-xs font-medium mb-1">Quantidade</label>
                     <input
                       type="number"
+                          min="1"
                       value={item.quantidade}
                       onChange={(e) => handleItemChange(item.id, "quantidade", e.target.value)}
                       className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
                       placeholder="1"
                     />
                   </div>
-                  <div className="col-span-2">
+                      <div className="col-span-3">
                     <label className="block text-xs font-medium mb-1">Valor Unit.</label>
                     <input
                       type="number"
@@ -1256,6 +1944,7 @@ export default function OrdemServicoPage() {
                       onChange={(e) => handleItemChange(item.id, "valorUnitario", e.target.value)}
                       className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
                       placeholder="0.00"
+                          readOnly={!!item.servicoId && !!formData.mecanico}
                     />
                   </div>
                   <div className="col-span-2">
@@ -1264,7 +1953,7 @@ export default function OrdemServicoPage() {
                       type="text"
                       value={item.valorTotal}
                       readOnly
-                      className="w-full rounded-md border border-input bg-muted px-2 py-1.5 text-sm"
+                          className="w-full rounded-md border border-input bg-muted px-2 py-1.5 text-sm font-semibold"
                       placeholder="0.00"
                     />
                   </div>
@@ -1272,16 +1961,25 @@ export default function OrdemServicoPage() {
                     {itens.length > 1 && (
                       <Button
                         type="button"
-                        variant="outline"
+                            variant="ghost"
                         size="sm"
                         onClick={() => removeItem(item.id)}
+                            className="h-9"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     )}
                   </div>
                 </div>
-              ))}
+                    
+                    {!formData.mecanico && item.servicoId && (
+                      <p className="text-xs text-orange-600 dark:text-orange-400">
+                        ⚠ Selecione um mecânico para calcular o valor estimado
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -1684,7 +2382,7 @@ export default function OrdemServicoPage() {
                 <select
                   value={editFormData.status}
                   onChange={(e) => handleEditInputChange("status", e.target.value)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  className="status-select w-full rounded-md border border-input bg-background px-3 py-2 text-sm text-center"
                 >
                   {Object.values(StatusOrdemServico).map((status) => (
                     <option key={status} value={status}>{status}</option>
@@ -1733,23 +2431,75 @@ export default function OrdemServicoPage() {
               )}
             </div>
             <div className="space-y-3">
-              {editItens.map((item) => (
-                <div key={item.id} className="grid grid-cols-12 gap-2 items-end">
-                  <div className="col-span-5">
-                    <label className="block text-xs font-medium mb-1">Descrição</label>
+              {editItens.map((item) => {
+                const servicoSelecionado = item.servicoId ? servicos.find(s => s.id === item.servicoId) : null;
+                const funcionarioSelecionado = editFormData.mecanico ? mecanicos.find(m => m.nome === editFormData.mecanico) : null;
+                let detalhesCalculo = null;
+                
+                if (servicoSelecionado && funcionarioSelecionado) {
+                  detalhesCalculo = calcularValorEstimadoServico(
+                    servicoSelecionado,
+                    funcionarioSelecionado,
+                    configuracoesFinanceiras
+                  );
+                }
+
+                return (
+                  <div key={item.id} className="border border-border rounded-lg p-3 space-y-2">
+                    <div className="grid grid-cols-12 gap-2 items-end">
+                      <div className="col-span-6">
+                        <label className="block text-xs font-medium mb-1">Serviço</label>
+                        <select
+                          value={item.servicoId || ""}
+                          onChange={(e) => handleEditItemChange(item.id, "servicoId", e.target.value)}
+                          onFocus={() => carregarServicos()}
+                          disabled={!isEditMode}
+                          className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm disabled:opacity-50"
+                        >
+                          <option value="">Selecione um serviço ou digite manualmente</option>
+                          {servicos.map((servico) => (
+                            <option key={servico.id} value={servico.id}>
+                              {servico.nome} ({servico.tempoEstimadoHoras}h)
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="col-span-6">
+                        <label className="block text-xs font-medium mb-1">Descrição (ou digite manualmente)</label>
                     <input
                       type="text"
                       value={item.descricao}
                       onChange={(e) => handleEditItemChange(item.id, "descricao", e.target.value)}
-                      disabled={!isEditMode}
+                          disabled={!isEditMode || !!item.servicoId}
                       className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm disabled:opacity-50"
                       placeholder="Serviço ou peça"
                     />
                   </div>
+                    </div>
+                    
+                    {servicoSelecionado && (
+                      <div className="bg-blue-50 dark:bg-blue-900/20 rounded-md p-2 text-xs">
+                        <p className="text-blue-800 dark:text-blue-300">
+                          <Clock className="h-3 w-3 inline mr-1" />
+                          <strong>Tempo estimado:</strong> {servicoSelecionado.tempoEstimadoHoras}h
+                          {funcionarioSelecionado && detalhesCalculo && (
+                            <>
+                              {" • "}<strong>Valor/hora:</strong> R$ {detalhesCalculo.valorHoraFuncionario.toFixed(2)}
+                              {" • "}<strong>Custo médio:</strong> R$ {detalhesCalculo.custoMedio.toFixed(2)}
+                              {" • "}<strong>Mão de obra:</strong> R$ {detalhesCalculo.valorMaoObra.toFixed(2)}
+                              {" • "}<strong>Margem ({configuracoesFinanceiras.margemLucroPorAtendimento}%):</strong> R$ {detalhesCalculo.margemLucro.toFixed(2)}
+                            </>
+                          )}
+                        </p>
+                      </div>
+                    )}
+
+                    <div className="grid grid-cols-12 gap-2 items-end">
                   <div className="col-span-2">
                     <label className="block text-xs font-medium mb-1">Quantidade</label>
                     <input
                       type="number"
+                          min="1"
                       value={item.quantidade}
                       onChange={(e) => handleEditItemChange(item.id, "quantidade", e.target.value)}
                       disabled={!isEditMode}
@@ -1757,14 +2507,14 @@ export default function OrdemServicoPage() {
                       placeholder="1"
                     />
                   </div>
-                  <div className="col-span-2">
+                      <div className="col-span-3">
                     <label className="block text-xs font-medium mb-1">Valor Unit.</label>
                     <input
                       type="number"
                       step="0.01"
                       value={item.valorUnitario}
                       onChange={(e) => handleEditItemChange(item.id, "valorUnitario", e.target.value)}
-                      disabled={!isEditMode}
+                          disabled={!isEditMode || (!!item.servicoId && !!editFormData.mecanico)}
                       className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm disabled:opacity-50"
                       placeholder="0.00"
                     />
@@ -1775,7 +2525,7 @@ export default function OrdemServicoPage() {
                       type="text"
                       value={item.valorTotal}
                       readOnly
-                      className="w-full rounded-md border border-input bg-muted px-2 py-1.5 text-sm"
+                          className="w-full rounded-md border border-input bg-muted px-2 py-1.5 text-sm font-semibold"
                       placeholder="0.00"
                     />
                   </div>
@@ -1783,16 +2533,25 @@ export default function OrdemServicoPage() {
                     {editItens.length > 1 && isEditMode && (
                       <Button
                         type="button"
-                        variant="outline"
+                            variant="ghost"
                         size="sm"
                         onClick={() => removeEditItem(item.id)}
+                            className="h-9"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
                     )}
                   </div>
                 </div>
-              ))}
+                    
+                    {!editFormData.mecanico && item.servicoId && (
+                      <p className="text-xs text-orange-600 dark:text-orange-400">
+                        ⚠ Selecione um mecânico para calcular o valor estimado
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           </div>
 

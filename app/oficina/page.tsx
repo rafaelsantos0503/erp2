@@ -1,41 +1,72 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Wrench, DollarSign, Users, ClipboardCheck, TrendingUp, AlertCircle } from "lucide-react";
-
-interface OrdemServicoDashboard {
-  id: number;
-  numero: string;
-  cliente: string;
-  veiculo: string;
-  status: string;
-  data: string;
-  valor: number;
-  prioridade: string;
-}
+import { useApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { dashboardService, type DashboardStats, type DashboardOrdem } from "@/lib/services/dashboard.service";
 
 export default function OficinaDashboard() {
-  const [ordens, setOrdens] = useState<OrdemServicoDashboard[]>([
-    { id: 1, numero: "OS-001", cliente: "João Silva", veiculo: "Civic 2020", status: "Em Andamento", data: "01/03/2025", valor: 450.00, prioridade: "Alta" },
-    { id: 2, numero: "OS-002", cliente: "Maria Santos", veiculo: "Corolla 2019", status: "Aguardando Peças", data: "28/02/2025", valor: 320.00, prioridade: "Média" },
-    { id: 3, numero: "OS-003", cliente: "Pedro Oliveira", veiculo: "Onix 2021", status: "Finalizado", data: "27/02/2025", valor: 180.00, prioridade: "Baixa" },
-    { id: 4, numero: "OS-004", cliente: "Ana Costa", veiculo: "HB20 2022", status: "Em Andamento", data: "01/03/2025", valor: 520.00, prioridade: "Alta" },
-    { id: 5, numero: "OS-005", cliente: "Carlos Pereira", veiculo: "Gol 2018", status: "Orçamento", data: "02/03/2025", valor: 0, prioridade: "Baixa" },
-  ]);
+  const [estatisticas, setEstatisticas] = useState<DashboardStats | null>(null);
+  const [ordensRecentes, setOrdensRecentes] = useState<DashboardOrdem[]>([]);
+  const [carregando, setCarregando] = useState(true);
+  const api = useApi();
+  const { token } = useAuth();
+  const empresaId = api.empresaId;
 
-  const ordensEmAndamento = ordens.filter(os => os.status === "Em Andamento");
-  const ordensAguardando = ordens.filter(os => os.status === "Aguardando Peças");
-  const ordensFinalizadas = ordens.filter(os => os.status === "Finalizado");
-  const totalReceita = ordensFinalizadas.reduce((sum, os) => sum + os.valor, 0);
-  const receitaMensal = ordensFinalizadas
-    .filter(os => {
-      const mesAtual = new Date().getMonth() + 1;
-      const mesOS = parseInt(os.data.split('/')[1]);
-      return mesOS === mesAtual;
-    })
-    .reduce((sum, os) => sum + os.valor, 0);
-  const ordensUrgentes = ordens.filter(os => os.prioridade === "Alta" && os.status !== "Finalizado");
+  useEffect(() => {
+    // Só carrega se empresaId e token estiverem disponíveis
+    if (!empresaId || !token) {
+      return;
+    }
+
+    let cancelado = false;
+
+    async function carregarDashboard() {
+      try {
+        setCarregando(true);
+        
+        // Busca dados do dashboard do endpoint específico
+        const dashboard = await dashboardService.getDashboard(api);
+
+        // Evita atualizar estado se o componente foi desmontado ou empresaId mudou
+        if (cancelado) return;
+
+        setEstatisticas(dashboard.estatisticas);
+        setOrdensRecentes(dashboard.ordensRecentes || []);
+      } catch (error) {
+        console.error("Erro ao carregar dados do dashboard:", error);
+        if (!cancelado) {
+          setEstatisticas(null);
+          setOrdensRecentes([]);
+        }
+      } finally {
+        if (!cancelado) {
+          setCarregando(false);
+        }
+      }
+    }
+
+    carregarDashboard();
+
+    // Cleanup function para cancelar requisição se empresaId ou token mudarem
+    return () => {
+      cancelado = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [empresaId, token]); // Usa apenas empresaId e token como dependências principais. api é usado mas muda a cada render.
+
+  if (carregando) {
+    return (
+      <div className="space-y-6">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-muted-foreground">Carregando...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-6">
@@ -50,7 +81,7 @@ export default function OficinaDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Ordens em Andamento</p>
-                <p className="text-2xl font-bold">{ordensEmAndamento.length}</p>
+                <p className="text-2xl font-bold">{estatisticas?.ordensEmAndamento || 0}</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-blue-100 dark:bg-blue-900/20">
                 <Wrench className="h-6 w-6 text-blue-600 dark:text-blue-400" />
@@ -64,7 +95,7 @@ export default function OficinaDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Aguardando Peças</p>
-                <p className="text-2xl font-bold">{ordensAguardando.length}</p>
+                <p className="text-2xl font-bold">{estatisticas?.ordensAguardandoPecas || 0}</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-orange-100 dark:bg-orange-900/20">
                 <AlertCircle className="h-6 w-6 text-orange-600 dark:text-orange-400" />
@@ -78,7 +109,7 @@ export default function OficinaDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Receita Mensal</p>
-                <p className="text-2xl font-bold">R$ {receitaMensal.toFixed(2)}</p>
+                <p className="text-2xl font-bold">R$ {(estatisticas?.receitaMensal || 0).toFixed(2)}</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/20">
                 <DollarSign className="h-6 w-6 text-green-600 dark:text-green-400" />
@@ -92,7 +123,7 @@ export default function OficinaDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Ordens Urgentes</p>
-                <p className="text-2xl font-bold">{ordensUrgentes.length}</p>
+                <p className="text-2xl font-bold">{estatisticas?.ordensUrgentes || 0}</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-100 dark:bg-red-900/20">
                 <AlertCircle className="h-6 w-6 text-red-600 dark:text-red-400" />
@@ -108,53 +139,59 @@ export default function OficinaDashboard() {
             <CardTitle>Ordens de Serviço Recentes</CardTitle>
           </CardHeader>
           <CardContent>
-            <div className="space-y-4">
-              {ordens.slice(0, 5).map((ordem) => {
-                const statusColor = 
-                  ordem.status === "Finalizado" ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400" :
-                  ordem.status === "Em Andamento" ? "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400" :
-                  ordem.status === "Aguardando Peças" ? "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400" :
-                  "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400";
-                
-                const prioridadeColor = 
-                  ordem.prioridade === "Alta" ? "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400" :
-                  ordem.prioridade === "Média" ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400" :
-                  "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400";
+            {ordensRecentes.length === 0 ? (
+              <div className="text-center py-8 text-muted-foreground">
+                Nenhuma ordem de serviço encontrada
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {ordensRecentes.map((ordem) => {
+                  const statusColor = 
+                    ordem.status === "Finalizado" ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400" :
+                    ordem.status === "Em Andamento" ? "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400" :
+                    ordem.status === "Aguardando Peças" ? "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400" :
+                    "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400";
+                  
+                  const prioridadeColor = 
+                    ordem.prioridade === "Alta" ? "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400" :
+                    ordem.prioridade === "Média" ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400" :
+                    "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400";
 
-                return (
-                  <div
-                    key={ordem.id}
-                    className="flex items-center justify-between rounded-lg border border-border p-4 hover:bg-accent transition-colors"
-                  >
-                    <div className="flex items-start gap-4 flex-1">
-                      <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
-                        <ClipboardCheck className="h-6 w-6 text-primary" />
-                      </div>
-                      <div className="flex-1">
-                        <div className="flex items-center gap-2 mb-1">
-                          <p className="font-medium">{ordem.numero}</p>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${prioridadeColor}`}>
-                            {ordem.prioridade}
-                          </span>
+                  return (
+                    <div
+                      key={ordem.id}
+                      className="flex items-center justify-between rounded-lg border border-border p-4 hover:bg-accent transition-colors"
+                    >
+                      <div className="flex items-start gap-4 flex-1">
+                        <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-primary/10">
+                          <ClipboardCheck className="h-6 w-6 text-primary" />
                         </div>
-                        <p className="text-sm text-foreground">{ordem.cliente}</p>
-                        <p className="text-xs text-muted-foreground">{ordem.veiculo}</p>
-                        <div className="flex items-center gap-2 mt-2">
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}`}>
-                            {ordem.status}
-                          </span>
-                          {ordem.valor > 0 && (
-                            <span className="text-sm font-semibold text-green-600 dark:text-green-400">
-                              R$ {ordem.valor.toFixed(2)}
+                        <div className="flex-1">
+                          <div className="flex items-center gap-2 mb-1">
+                            <p className="font-medium">{ordem.numero}</p>
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${prioridadeColor}`}>
+                              {ordem.prioridade}
                             </span>
-                          )}
+                          </div>
+                          <p className="text-sm text-foreground">{ordem.cliente}</p>
+                          <p className="text-xs text-muted-foreground">{ordem.veiculo}</p>
+                          <div className="flex items-center gap-2 mt-2">
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}`}>
+                              {ordem.status}
+                            </span>
+                            {ordem.valor > 0 && (
+                              <span className="text-sm font-semibold text-green-600 dark:text-green-400">
+                                R$ {ordem.valor.toFixed(2)}
+                              </span>
+                            )}
+                          </div>
                         </div>
                       </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </CardContent>
         </Card>
 
@@ -174,7 +211,7 @@ export default function OficinaDashboard() {
                     <p className="text-xs text-muted-foreground">Este mês</p>
                   </div>
                 </div>
-                <p className="text-2xl font-bold">{ordens.length}</p>
+                <p className="text-2xl font-bold">{estatisticas?.totalOrdens || 0}</p>
               </div>
 
               <div className="flex items-center justify-between p-3 rounded-lg bg-green-50 dark:bg-green-950/20">
@@ -188,7 +225,7 @@ export default function OficinaDashboard() {
                   </div>
                 </div>
                 <p className="text-2xl font-bold">
-                  {ordens.length > 0 ? ((ordensFinalizadas.length / ordens.length) * 100).toFixed(0) : 0}%
+                  {(estatisticas?.taxaConclusao || 0).toFixed(0)}%
                 </p>
               </div>
 
@@ -203,7 +240,7 @@ export default function OficinaDashboard() {
                   </div>
                 </div>
                 <p className="text-2xl font-bold">
-                  R$ {ordensFinalizadas.length > 0 ? (totalReceita / ordensFinalizadas.length).toFixed(0) : '0'}
+                  R$ {(estatisticas?.ticketMedio || 0).toFixed(0)}
                 </p>
               </div>
 
@@ -217,7 +254,7 @@ export default function OficinaDashboard() {
                     <p className="text-xs text-muted-foreground">Este mês</p>
                   </div>
                 </div>
-                <p className="text-2xl font-bold">{new Set(ordens.map(os => os.cliente)).size}</p>
+                <p className="text-2xl font-bold">{estatisticas?.clientesAtendidos || 0}</p>
               </div>
             </div>
           </CardContent>

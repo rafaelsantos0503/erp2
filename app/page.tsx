@@ -1,5 +1,11 @@
+"use client";
+
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { AuthRouteGuard } from "@/components/auth-route-guard";
+import { useAuth } from "@/lib/auth-context";
 import { Rocket, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 
@@ -12,6 +18,7 @@ const modules = [
     color: "bg-orange-500",
     href: "/corrida",
     features: ["Eventos", "Atletas", "Inscrições", "Resultados"],
+    modulo: 2,
   },
   {
     id: "oficina",
@@ -21,10 +28,46 @@ const modules = [
     color: "bg-blue-500",
     href: "/oficina",
     features: ["Ordem de Serviço", "Peças", "Clientes", "Financeiro"],
+    modulo: 3,
   },
 ];
 
-export default function Home() {
+function HomeContent() {
+  const router = useRouter();
+  const { usuario, isAuthenticated, isLoading } = useAuth();
+
+  useEffect(() => {
+    if (isLoading || !isAuthenticated) return;
+
+    // Se não for superadmin, redireciona direto para o módulo dele
+    if (usuario && usuario.modulo !== 1) {
+      if (usuario.modulo === 2) {
+        router.push("/corrida");
+      } else if (usuario.modulo === 3) {
+        router.push("/oficina");
+      }
+    }
+  }, [usuario, isAuthenticated, isLoading, router]);
+
+  // Se estiver carregando ou não autenticado, não renderiza nada ainda
+  if (isLoading || !isAuthenticated) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-muted-foreground">Carregando...</div>
+      </div>
+    );
+  }
+
+  // Se não for superadmin, mostra loading enquanto redireciona
+  if (usuario && usuario.modulo !== 1) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-muted-foreground">Redirecionando...</div>
+      </div>
+    );
+  }
+
+  // Apenas superadmin (módulo 1) vê a tela de escolha de módulos
   return (
     <div className="min-h-screen bg-gradient-to-br from-primary/5 via-background to-background">
       <div className="container mx-auto px-6 py-16">
@@ -33,11 +76,11 @@ export default function Home() {
             ERP Modular
           </h1>
           <p className="text-xl text-muted-foreground max-w-2xl mx-auto">
-            Escolha o módulo que deseja acessar ou configure um novo módulo para seu negócio
+            Escolha o módulo que deseja acessar
           </p>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-3 max-w-6xl mx-auto">
+        <div className="grid gap-6 md:grid-cols-2 max-w-4xl mx-auto">
           {modules.map((module) => {
             const Icon = module.icon;
             return (
@@ -45,13 +88,6 @@ export default function Home() {
                 key={module.id}
                 className="relative overflow-hidden hover:shadow-lg transition-shadow"
               >
-                {module.comingSoon && (
-                  <div className="absolute top-4 right-4">
-                    <span className="inline-flex items-center rounded-full bg-primary px-3 py-1 text-xs font-medium text-primary-foreground">
-                      Em Breve
-                    </span>
-                  </div>
-                )}
                 <CardHeader>
                   <div className="flex items-center gap-4 mb-2">
                     <div className={`flex h-14 w-14 items-center justify-center rounded-lg ${module.color} text-white`}>
@@ -74,24 +110,25 @@ export default function Home() {
                       </div>
                     ))}
                   </div>
-                  {module.comingSoon ? (
-                    <Button variant="outline" disabled className="w-full">
-                      Aguarde o lançamento
+                  <Link href={module.href} className="block">
+                    <Button className="w-full">
+                      Acessar Módulo
                     </Button>
-                  ) : (
-                    <Link href={module.href} className="block">
-                      <Button className="w-full">
-                        Acessar Módulo
-                      </Button>
-                    </Link>
-                  )}
+                  </Link>
                 </CardContent>
               </Card>
             );
           })}
         </div>
-
       </div>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <AuthRouteGuard>
+      <HomeContent />
+    </AuthRouteGuard>
   );
 }

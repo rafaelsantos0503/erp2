@@ -1,11 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { Users, Plus, Trash2, Edit2, Car } from "lucide-react";
+import { Users, Plus, Trash2, Edit2, Car, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Endereco, Marca, Modelo } from "../types";
+import { useApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { clienteService, type ClienteAPI } from "@/lib/services/cliente.service";
 
 export interface VeiculoCliente {
   id: number;
@@ -103,32 +106,10 @@ export default function ClientesPage() {
   const [showModeloDropdown, setShowModeloDropdown] = useState(false);
   const [selectedMarcaId, setSelectedMarcaId] = useState<number | null>(null);
 
-  const [clientes, setClientes] = useState<Cliente[]>([
-    { 
-      id: 1, 
-      nome: "João Silva", 
-      telefone: "(11) 99999-9999", 
-      email: "joao@email.com", 
-      cpf: "123.456.789-00", 
-      endereco: { cep: "01310-100", logradouro: "Rua das Flores", numero: "123", complemento: "Apto 201", bairro: "Bela Vista", cidade: "São Paulo", estado: "SP" },
-      veiculos: [
-        { id: 1, marca: "Honda", modelo: "Civic", placa: "ABC-1234", ano: "2020", cor: "Prata" },
-        { id: 2, marca: "Toyota", modelo: "Corolla", placa: "DEF-5678", ano: "2019", cor: "Branco" }
-      ]
-    },
-    { 
-      id: 2, 
-      nome: "Maria Santos", 
-      telefone: "(11) 88888-8888", 
-      email: "maria@email.com", 
-      cpf: "987.654.321-00", 
-      endereco: { cep: "01310-100", logradouro: "Av. Paulista", numero: "1000", bairro: "Bela Vista", cidade: "São Paulo", estado: "SP" },
-      veiculos: [
-        { id: 3, marca: "Chevrolet", modelo: "Onix", placa: "GHI-9012", ano: "2021", cor: "Preto" }
-      ]
-    },
-    { id: 3, nome: "Pedro Oliveira", telefone: "(11) 77777-7777", email: "pedro@email.com" },
-  ]);
+  const api = useApi();
+  const { token } = useAuth();
+  
+  const [clientes, setClientes] = useState<Cliente[]>([]); // Dados carregados do backend
 
   const handleInputChange = (field: string, value: string) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -370,6 +351,81 @@ export default function ClientesPage() {
     setIsModeloModalOpen(true);
   };
 
+  const [paginaAtual, setPaginaAtual] = useState(1);
+  const [itensPorPagina, setItensPorPagina] = useState(10);
+
+  // Calcular paginação
+  const totalPaginas = Math.ceil(clientes.length / itensPorPagina) || 1;
+  const indiceInicio = (paginaAtual - 1) * itensPorPagina;
+  const indiceFim = indiceInicio + itensPorPagina;
+  const clientesPaginaAtual = clientes.slice(indiceInicio, indiceFim);
+
+  // Ref para garantir que os dados sejam carregados apenas uma vez
+  const dadosCarregados = useRef(false);
+  
+  // Ajustar página atual se estiver fora do range válido
+  // Carregar clientes do backend quando a rota for acessada
+  useEffect(() => {
+    // Evita carregar duas vezes (mesmo em modo desenvolvimento do React)
+    if (dadosCarregados.current) return;
+    if (!api.empresaId || !token) return;
+    
+    let cancelado = false;
+    dadosCarregados.current = true;
+    
+    async function carregarClientes() {
+      if (!api.empresaId || !token) return;
+      
+      try {
+        const pagina = await clienteService.getAll(api, { page: 0, size: 1000 });
+        if (cancelado) return;
+        // Converte ClienteAPI para Cliente
+        const clientesConvertidos: Cliente[] = pagina.content.map((c: ClienteAPI) => ({
+          id: c.id,
+          nome: c.nome,
+          telefone: c.telefone,
+          email: c.email,
+          cpf: c.cpf,
+          endereco: c.endereco,
+          veiculos: (c.veiculos || []).map(v => ({
+            id: v.id,
+            marca: v.marca,
+            modelo: v.modelo,
+            placa: v.placa,
+            ano: v.ano,
+            cor: v.cor,
+          })),
+        }));
+        setClientes(clientesConvertidos);
+      } catch (error) {
+        if (cancelado) return;
+        console.error("Erro ao carregar clientes:", error);
+        setClientes([]);
+      }
+    }
+    
+    carregarClientes();
+    
+    return () => {
+      cancelado = true;
+      // Reset apenas se empresaId ou token mudarem
+      if (!api.empresaId || !token) {
+        dadosCarregados.current = false;
+      }
+    };
+  }, [api.empresaId, token]); // api.empresaId é estável, mas podemos melhorar isso depois
+
+  useEffect(() => {
+    if (paginaAtual > totalPaginas && totalPaginas > 0) {
+      setPaginaAtual(totalPaginas);
+    }
+  }, [totalPaginas, paginaAtual]);
+
+  const handleItensPorPaginaChange = (novaQuantidade: number) => {
+    setItensPorPagina(novaQuantidade);
+    setPaginaAtual(1);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -385,11 +441,28 @@ export default function ClientesPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle>Lista de Clientes</CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle>Lista de Clientes</CardTitle>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-muted-foreground">Itens por página:</label>
+              <select
+                value={itensPorPagina}
+                onChange={(e) => handleItensPorPaginaChange(Number(e.target.value))}
+                className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="space-y-4">
-            {clientes.map((cliente) => (
+            {clientesPaginaAtual.length > 0 ? (
+              clientesPaginaAtual.map((cliente) => (
               <div
                 key={cliente.id}
                 className="flex items-center justify-between rounded-lg border border-border p-4 hover:bg-accent transition-colors"
@@ -422,23 +495,83 @@ export default function ClientesPage() {
                 </div>
                 <div className="flex items-center gap-2">
                   <Button
-                    variant="outline"
-                    size="icon"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleEdit(cliente)}
                   >
                     <Edit2 className="h-4 w-4" />
                   </Button>
                   <Button
-                    variant="outline"
-                    size="icon"
+                    variant="ghost"
+                    size="sm"
                     onClick={() => handleDelete(cliente.id)}
                   >
                     <Trash2 className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
-            ))}
+              ))
+            ) : (
+              <div className="text-center py-12">
+                <p className="text-muted-foreground">Nenhum cliente cadastrado</p>
+              </div>
+            )}
           </div>
+
+          {/* Controles de Paginação */}
+          {clientes.length > 0 && (
+            <div className="flex items-center justify-between border-t pt-4 mt-4">
+              <div className="text-sm text-muted-foreground">
+                Mostrando {indiceInicio + 1} até {Math.min(indiceFim, clientes.length)} de {clientes.length} clientes
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPaginaAtual(prev => Math.max(1, prev - 1))}
+                  disabled={paginaAtual === 1}
+                  className="gap-2"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Anterior
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPaginas }, (_, i) => i + 1).map((pagina) => {
+                    if (
+                      pagina === 1 ||
+                      pagina === totalPaginas ||
+                      (pagina >= paginaAtual - 1 && pagina <= paginaAtual + 1)
+                    ) {
+                      return (
+                        <Button
+                          key={pagina}
+                          variant={pagina === paginaAtual ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setPaginaAtual(pagina)}
+                          className="min-w-[2.5rem]"
+                        >
+                          {pagina}
+                        </Button>
+                      );
+                    } else if (pagina === paginaAtual - 2 || pagina === paginaAtual + 2) {
+                      return <span key={pagina} className="px-2 text-muted-foreground">...</span>;
+                    }
+                    return null;
+                  })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPaginaAtual(prev => Math.min(totalPaginas, prev + 1))}
+                  disabled={paginaAtual === totalPaginas}
+                  className="gap-2"
+                >
+                  Próxima
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

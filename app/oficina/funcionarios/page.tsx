@@ -1,26 +1,74 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
-import { Users, Plus, Trash2, Edit2 } from "lucide-react";
+import { Users, Plus, Trash2, Edit2, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Funcionario, Endereco } from "../types";
-
-const funcionariosIniciais: Funcionario[] = [
-  { id: 1, nome: "Carlos Santos", telefone: "(11) 95555-5555", email: "carlos@oficina.com", tipo: "Mecanico", tipoContratacao: "CLT", valorDespesa: 3500, cpf: "123.456.789-00", dataAdmissao: "01/01/2023", endereco: { cep: "01310-100", logradouro: "Av. Paulista", numero: "1000", complemento: "Apto 101", bairro: "Bela Vista", cidade: "São Paulo", estado: "SP" } },
-  { id: 2, nome: "Roberto Lima", telefone: "(11) 94444-4444", email: "roberto@oficina.com", tipo: "Mecanico", tipoContratacao: "CLT", valorDespesa: 3200, cpf: "234.567.890-11", dataAdmissao: "15/03/2023", endereco: { cep: "02010-000", logradouro: "Rua Augusta", numero: "500", bairro: "Consolação", cidade: "São Paulo", estado: "SP" } },
-  { id: 3, nome: "José Ferreira", telefone: "(11) 93333-3333", email: "jose@oficina.com", tipo: "Mecanico", tipoContratacao: "PJ", valorDespesa: 2800, cpf: "345.678.901-22", dataAdmissao: "01/06/2023" },
-  { id: 4, nome: "Ana Silva", telefone: "(11) 92222-2222", email: "ana@oficina.com", tipo: "Recepcionista", tipoContratacao: "CLT", valorDespesa: 2200, cpf: "456.789.012-33", dataAdmissao: "01/02/2024" },
-  { id: 5, nome: "Maria Costa", telefone: "(11) 91111-1111", email: "maria@oficina.com", tipo: "Recepcionista", tipoContratacao: "CLT", valorDespesa: 2200, cpf: "567.890.123-44", dataAdmissao: "01/04/2024" },
-  { id: 6, nome: "João Pereira", telefone: "(11) 90000-0000", email: "joao@oficina.com", tipo: "Gerente", tipoContratacao: "CLT", valorDespesa: 5000, cpf: "678.901.234-55", dataAdmissao: "01/01/2022" },
-];
+import { useApi } from "@/lib/api";
+import { useAuth } from "@/lib/auth-context";
+import { funcionarioService, type FuncionarioAPI } from "@/lib/services/funcionario.service";
 
 export default function FuncionariosPage() {
-  const [funcionarios, setFuncionarios] = useState<Funcionario[]>(funcionariosIniciais);
+  const api = useApi();
+  const { token } = useAuth();
+  const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
+
+  // Ref para garantir que os dados sejam carregados apenas uma vez
+  const dadosCarregados = useRef(false);
+  
+  // Carregar funcionários do backend quando a rota for acessada
+  useEffect(() => {
+    // Evita carregar duas vezes (mesmo em modo desenvolvimento do React)
+    if (dadosCarregados.current) return;
+    if (!api.empresaId || !token) return;
+    
+    let cancelado = false;
+    dadosCarregados.current = true;
+    
+    async function carregarFuncionarios() {
+      if (!api.empresaId || !token) return;
+      
+      try {
+        const pagina = await funcionarioService.getAll(api, { page: 0, size: 1000 });
+        if (cancelado) return;
+        // Converte FuncionarioAPI para Funcionario
+        const funcionariosConvertidos: Funcionario[] = pagina.content.map((f: FuncionarioAPI) => ({
+          id: f.id,
+          nome: f.nome,
+          telefone: f.telefone,
+          email: f.email,
+          tipo: f.tipo as Funcionario["tipo"], // Cast necessário
+          tipoContratacao: f.tipoContratacao,
+          valorDespesa: f.valorDespesa,
+          cpf: f.cpf,
+          dataAdmissao: f.dataAdmissao,
+          endereco: f.endereco,
+        }));
+        setFuncionarios(funcionariosConvertidos);
+      } catch (error) {
+        if (cancelado) return;
+        console.error("Erro ao carregar funcionários:", error);
+        setFuncionarios([]);
+      }
+    }
+    
+    carregarFuncionarios();
+    
+    return () => {
+      cancelado = true;
+      // Reset apenas se empresaId ou token mudarem
+      if (!api.empresaId || !token) {
+        dadosCarregados.current = false;
+      }
+    };
+  }, [api.empresaId, token]); // api.empresaId é estável, mas podemos melhorar isso depois
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [editingId, setEditingId] = useState<number | null>(null);
+  const [paginaAtual, setPaginaAtual] = useState(1);
+  const [itensPorPagina, setItensPorPagina] = useState(10);
 
   const [formData, setFormData] = useState({
     nome: "",
@@ -84,48 +132,84 @@ export default function FuncionariosPage() {
     buscarCep(e.target.value);
   };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const novoId = funcionarios.length + 1;
-    const novoFuncionario: Funcionario = {
-      id: novoId,
-      nome: formData.nome,
-      telefone: formData.telefone,
-      email: formData.email,
-      tipo: formData.tipo,
-      tipoContratacao: formData.tipoContratacao,
-      valorDespesa: formData.valorDespesa ? parseFloat(formData.valorDespesa) : undefined,
-      cpf: formData.cpf,
-      dataAdmissao: formData.dataAdmissao,
-      endereco: formData.endereco,
-    };
 
-    setFuncionarios([...funcionarios, novoFuncionario]);
-    setIsModalOpen(false);
-    resetForm();
+    try {
+      // Salvar no backend
+      const funcionarioSalvo = await funcionarioService.create(api, {
+        nome: formData.nome,
+        telefone: formData.telefone,
+        email: formData.email,
+        tipo: formData.tipo,
+        tipoContratacao: formData.tipoContratacao,
+        valorDespesa: formData.valorDespesa ? parseFloat(formData.valorDespesa) : 0,
+        cpf: formData.cpf,
+        dataAdmissao: formData.dataAdmissao,
+        endereco: formData.endereco,
+      });
+      
+      // Atualizar lista local
+      setFuncionarios([...funcionarios, {
+        id: funcionarioSalvo.id,
+        nome: funcionarioSalvo.nome,
+        telefone: funcionarioSalvo.telefone,
+        email: funcionarioSalvo.email,
+        tipo: funcionarioSalvo.tipo as Funcionario["tipo"],
+        tipoContratacao: funcionarioSalvo.tipoContratacao,
+        valorDespesa: funcionarioSalvo.valorDespesa,
+        cpf: funcionarioSalvo.cpf,
+        dataAdmissao: funcionarioSalvo.dataAdmissao,
+        endereco: funcionarioSalvo.endereco,
+      }]);
+      
+      setIsModalOpen(false);
+      resetForm();
+    } catch (error) {
+      console.error("Erro ao criar funcionário:", error);
+      alert("Erro ao criar funcionário. Tente novamente.");
+    }
   };
 
-  const handleEditSubmit = (e: React.FormEvent) => {
+  const handleEditSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!editingId) return;
 
-    const funcionarioAtualizado: Funcionario = {
-      id: editingId,
-      nome: formData.nome,
-      telefone: formData.telefone,
-      email: formData.email,
-      tipo: formData.tipo,
-      tipoContratacao: formData.tipoContratacao,
-      valorDespesa: formData.valorDespesa ? parseFloat(formData.valorDespesa) : undefined,
-      cpf: formData.cpf,
-      dataAdmissao: formData.dataAdmissao,
-      endereco: formData.endereco,
-    };
-
-    setFuncionarios(funcionarios.map((f) => (f.id === editingId ? funcionarioAtualizado : f)));
-    setIsEditModalOpen(false);
-    setEditingId(null);
-    resetForm();
+    try {
+      // Atualizar no backend
+      const funcionarioAtualizadoAPI = await funcionarioService.update(api, editingId, {
+        nome: formData.nome,
+        telefone: formData.telefone,
+        email: formData.email,
+        tipo: formData.tipo, // Backend espera string
+        tipoContratacao: formData.tipoContratacao,
+        valorDespesa: formData.valorDespesa ? parseFloat(formData.valorDespesa) : 0,
+        cpf: formData.cpf,
+        dataAdmissao: formData.dataAdmissao,
+        endereco: formData.endereco,
+      });
+      
+      // Atualizar lista local
+      setFuncionarios(funcionarios.map((f) => (f.id === editingId ? {
+        id: funcionarioAtualizadoAPI.id,
+        nome: funcionarioAtualizadoAPI.nome,
+        telefone: funcionarioAtualizadoAPI.telefone,
+        email: funcionarioAtualizadoAPI.email,
+        tipo: funcionarioAtualizadoAPI.tipo as Funcionario["tipo"],
+        tipoContratacao: funcionarioAtualizadoAPI.tipoContratacao,
+        valorDespesa: funcionarioAtualizadoAPI.valorDespesa,
+        cpf: funcionarioAtualizadoAPI.cpf,
+        dataAdmissao: funcionarioAtualizadoAPI.dataAdmissao,
+        endereco: funcionarioAtualizadoAPI.endereco,
+      } : f)));
+      
+      setIsEditModalOpen(false);
+      setEditingId(null);
+      resetForm();
+    } catch (error) {
+      console.error("Erro ao atualizar funcionário:", error);
+      alert("Erro ao atualizar funcionário. Tente novamente.");
+    }
   };
 
   const resetForm = () => {
@@ -150,9 +234,15 @@ export default function FuncionariosPage() {
     });
   };
 
-  const handleDelete = (id: number) => {
+  const handleDelete = async (id: number) => {
     if (confirm("Tem certeza que deseja excluir este funcionário?")) {
-      setFuncionarios(funcionarios.filter((f) => f.id !== id));
+      try {
+        await funcionarioService.delete(api, id);
+        setFuncionarios(funcionarios.filter((f) => f.id !== id));
+      } catch (error) {
+        console.error("Erro ao excluir funcionário:", error);
+        alert("Erro ao excluir funcionário. Tente novamente.");
+      }
     }
   };
 
@@ -185,6 +275,24 @@ export default function FuncionariosPage() {
     setIsModalOpen(true);
   };
 
+  // Calcular paginação
+  const totalPaginas = Math.ceil(funcionarios.length / itensPorPagina) || 1;
+  const indiceInicio = (paginaAtual - 1) * itensPorPagina;
+  const indiceFim = indiceInicio + itensPorPagina;
+  const funcionariosPaginaAtual = funcionarios.slice(indiceInicio, indiceFim);
+
+  // Ajustar página atual se estiver fora do range válido
+  useEffect(() => {
+    if (paginaAtual > totalPaginas && totalPaginas > 0) {
+      setPaginaAtual(totalPaginas);
+    }
+  }, [totalPaginas, paginaAtual]);
+
+  const handleItensPorPaginaChange = (novaQuantidade: number) => {
+    setItensPorPagina(novaQuantidade);
+    setPaginaAtual(1);
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -200,10 +308,26 @@ export default function FuncionariosPage() {
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Users className="h-6 w-6" />
-            Lista de Funcionários
-          </CardTitle>
+          <div className="flex items-center justify-between">
+            <CardTitle className="flex items-center gap-2">
+              <Users className="h-6 w-6" />
+              Lista de Funcionários
+            </CardTitle>
+            <div className="flex items-center gap-2">
+              <label className="text-sm text-muted-foreground">Itens por página:</label>
+              <select
+                value={itensPorPagina}
+                onChange={(e) => handleItensPorPaginaChange(Number(e.target.value))}
+                className="rounded-md border border-input bg-background px-2 py-1 text-sm"
+              >
+                <option value={5}>5</option>
+                <option value={10}>10</option>
+                <option value={20}>20</option>
+                <option value={50}>50</option>
+                <option value={100}>100</option>
+              </select>
+            </div>
+          </div>
         </CardHeader>
         <CardContent>
           <div className="overflow-x-auto">
@@ -220,7 +344,8 @@ export default function FuncionariosPage() {
                 </tr>
               </thead>
               <tbody>
-                {funcionarios.map((funcionario) => (
+                {funcionariosPaginaAtual.length > 0 ? (
+                  funcionariosPaginaAtual.map((funcionario) => (
                   <tr key={funcionario.id} className="border-b border-border hover:bg-accent transition-colors">
                     <td className="p-3">
                       <div className="font-medium">{funcionario.nome}</div>
@@ -250,14 +375,14 @@ export default function FuncionariosPage() {
                     <td className="p-3">
                       <div className="flex items-center justify-end gap-2">
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => handleEdit(funcionario)}
                         >
                           <Edit2 className="h-4 w-4" />
                         </Button>
                         <Button
-                          variant="outline"
+                          variant="ghost"
                           size="sm"
                           onClick={() => handleDelete(funcionario.id)}
                         >
@@ -266,10 +391,72 @@ export default function FuncionariosPage() {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  ))
+                ) : (
+                  <tr>
+                    <td colSpan={7} className="p-8 text-center text-muted-foreground">
+                      Nenhum funcionário cadastrado
+                    </td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>
+
+          {/* Controles de Paginação */}
+          {funcionarios.length > 0 && (
+            <div className="flex items-center justify-between border-t pt-4 mt-4">
+              <div className="text-sm text-muted-foreground">
+                Mostrando {indiceInicio + 1} até {Math.min(indiceFim, funcionarios.length)} de {funcionarios.length} funcionários
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPaginaAtual(prev => Math.max(1, prev - 1))}
+                  disabled={paginaAtual === 1}
+                  className="gap-2"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                  Anterior
+                </Button>
+                <div className="flex items-center gap-1">
+                  {Array.from({ length: totalPaginas }, (_, i) => i + 1).map((pagina) => {
+                    if (
+                      pagina === 1 ||
+                      pagina === totalPaginas ||
+                      (pagina >= paginaAtual - 1 && pagina <= paginaAtual + 1)
+                    ) {
+                      return (
+                        <Button
+                          key={pagina}
+                          variant={pagina === paginaAtual ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => setPaginaAtual(pagina)}
+                          className="min-w-[2.5rem]"
+                        >
+                          {pagina}
+                        </Button>
+                      );
+                    } else if (pagina === paginaAtual - 2 || pagina === paginaAtual + 2) {
+                      return <span key={pagina} className="px-2 text-muted-foreground">...</span>;
+                    }
+                    return null;
+                  })}
+                </div>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setPaginaAtual(prev => Math.min(totalPaginas, prev + 1))}
+                  disabled={paginaAtual === totalPaginas}
+                  className="gap-2"
+                >
+                  Próxima
+                  <ChevronRight className="h-4 w-4" />
+                </Button>
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
 

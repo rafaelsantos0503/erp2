@@ -1,11 +1,20 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Bell, Search, User, Moon, Sun } from "lucide-react";
+import { useRouter, usePathname } from "next/navigation";
+import { Bell, User, Moon, Sun, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { useAuth } from "@/lib/auth-context";
+import { EmpresaSelect } from "@/components/empresa-select";
 
 export function Header() {
+  const router = useRouter();
+  const pathname = usePathname();
+  const { usuario, logout } = useAuth();
   const [theme, setTheme] = useState<'light' | 'dark'>('light');
+
+  // Detecta o módulo atual baseado na rota
+  const moduloAtual = pathname?.startsWith('/corrida') ? 2 : pathname?.startsWith('/oficina') ? 3 : null;
 
   useEffect(() => {
     const savedTheme = localStorage.getItem('theme');
@@ -31,19 +40,29 @@ export function Header() {
     }
   };
 
+  const handleLogout = () => {
+    logout();
+    router.push("/login");
+  };
+
+  // Verifica se é superadmin (módulo 1)
+  const isSuperAdmin = usuario?.modulo === 1;
+
   return (
     <header className="flex h-16 items-center justify-between border-b border-border bg-card px-6">
       <div className="flex flex-1 items-center gap-4">
-        <div className="relative max-w-md flex-1">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <input
-            type="search"
-            placeholder="Buscar..."
-            className="w-full rounded-lg border border-border bg-background py-2 pl-10 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-primary"
-          />
-        </div>
+        {/* Espaço reservado para conteúdo futuro */}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-3">
+        {/* Select de empresa - apenas para superadmin, filtrado por módulo atual */}
+        {isSuperAdmin && moduloAtual && (
+          <EmpresaSelect moduloFiltro={moduloAtual} />
+        )}
+        {usuario && (
+          <span className="text-sm text-muted-foreground hidden sm:inline">
+            {usuario.nome}
+          </span>
+        )}
         <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
           <Bell className="h-5 w-5" />
         </Button>
@@ -52,6 +71,10 @@ export function Header() {
         </Button>
         <Button variant="ghost" size="sm" className="h-9 w-9 p-0">
           <User className="h-5 w-5" />
+        </Button>
+        <Button variant="ghost" size="sm" className="h-9 px-3" onClick={handleLogout}>
+          <LogOut className="h-4 w-4 mr-2" />
+          <span className="hidden sm:inline">Sair</span>
         </Button>
       </div>
     </header>
