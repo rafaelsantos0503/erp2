@@ -1,6 +1,6 @@
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Rocket, Store, Building2, ShoppingBag } from "lucide-react";
+import { Rocket, ShoppingBag } from "lucide-react";
 import Link from "next/link";
 
 const modules = [
@@ -14,16 +14,6 @@ const modules = [
     features: ["Eventos", "Atletas", "Inscrições", "Resultados"],
   },
   {
-    id: "mercado",
-    name: "Mercado",
-    description: "Sistema de gestão para mercados e supermercados",
-    icon: Store,
-    color: "bg-green-500",
-    href: "/mercado",
-    features: ["Produtos", "Clientes", "Estoque", "Vendas"],
-    comingSoon: true,
-  },
-  {
     id: "oficina",
     name: "Oficina",
     description: "Gestão completa para oficinas mecânicas",
@@ -31,17 +21,6 @@ const modules = [
     color: "bg-blue-500",
     href: "/oficina",
     features: ["Ordem de Serviço", "Peças", "Clientes", "Financeiro"],
-    comingSoon: true,
-  },
-  {
-    id: "office",
-    name: "Office",
-    description: "Gestão de escritórios e trabalhos administrativos",
-    icon: Building2,
-    color: "bg-purple-500",
-    href: "/office",
-    features: ["Documentos", "Tarefas", "Calendário", "Projetos"],
-    comingSoon: true,
   },
 ];
 

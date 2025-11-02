@@ -7,14 +7,9 @@ import { cn } from "@/lib/utils";
 import {
   LayoutDashboard,
   Users,
-  Package,
-  ShoppingCart,
+  UserCheck,
   Settings,
   BarChart3,
-  FileText,
-  Navigation,
-  Clock,
-  Rocket,
   Activity,
   Trophy,
   TrendingUp,
@@ -48,28 +43,10 @@ const menuModules: Record<string, MenuItem[]> = {
     { href: "/oficina", label: "Dashboard", icon: LayoutDashboard },
     { href: "/oficina/ordem-servico", label: "Ordem de Serviço", icon: ClipboardCheck },
     { href: "/oficina/clientes", label: "Clientes", icon: Users },
+    { href: "/oficina/funcionarios", label: "Funcionários", icon: UserCheck },
     { href: "/oficina/financeiro", label: "Financeiro", icon: DollarSign },
-    { href: "/oficina/funcionarios", label: "Funcionários", icon: Users },
     { href: "/oficina/relatorios", label: "Relatórios", icon: BarChart3 },
     { href: "/oficina/configuracoes", label: "Configurações", icon: Settings },
-  ],
-  mercado: [
-    { href: "/mercado", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/mercado/produtos", label: "Produtos", icon: Package },
-    { href: "/mercado/clientes", label: "Clientes", icon: Users },
-    { href: "/mercado/vendas", label: "Vendas", icon: ShoppingCart },
-    { href: "/mercado/estoque", label: "Estoque", icon: Package },
-    { href: "/mercado/relatorios", label: "Relatórios", icon: BarChart3 },
-    { href: "/mercado/configuracoes", label: "Configurações", icon: Settings },
-  ],
-  office: [
-    { href: "/office", label: "Dashboard", icon: LayoutDashboard },
-    { href: "/office/documentos", label: "Documentos", icon: FileText },
-    { href: "/office/tarefas", label: "Tarefas", icon: Clock },
-    { href: "/office/clientes", label: "Clientes", icon: Users },
-    { href: "/office/projetos", label: "Projetos", icon: LayoutDashboard },
-    { href: "/office/relatorios", label: "Relatórios", icon: BarChart3 },
-    { href: "/office/configuracoes", label: "Configurações", icon: Settings },
   ],
 };
 
@@ -101,10 +78,6 @@ export function Sidebar({ module = "corrida" }: SidebarProps) {
         return { title: "Corrida", subtitle: "Eventos Esportivos", icon: Trophy, color: "text-orange-500" };
       case "oficina":
         return { title: "Oficina", subtitle: "Mecânica Automotiva", icon: Wrench, color: "text-blue-500" };
-      case "mercado":
-        return { title: "Mercado", subtitle: "Supermercado", icon: LayoutDashboard, color: "text-green-500" };
-      case "office":
-        return { title: "Office", subtitle: "Escritório", icon: LayoutDashboard, color: "text-purple-500" };
       default:
         return { title: "ERP", subtitle: "Sistema", icon: LayoutDashboard, color: "text-primary" };
     }
