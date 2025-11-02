@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { Badge } from "@/components/ui/badge";
 import { ClipboardCheck, Plus, Wrench, AlertCircle, CheckCircle, Clock, DollarSign, Trash2, Edit2, Eye, Car, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Cliente, VeiculoCliente } from "../clientes/page";
 import type { Marca, Modelo, Funcionario } from "../types";
@@ -1199,6 +1200,37 @@ export default function OrdemServicoPage() {
     }
   };
 
+  const getStatusVariant = (status: StatusOrdemServico): "default" | "secondary" | "destructive" | "success" | "warning" | "info" => {
+    switch (status) {
+      case StatusOrdemServico.ORCAMENTO:
+        return "secondary";
+      case StatusOrdemServico.EM_ANDAMENTO:
+        return "info";
+      case StatusOrdemServico.AGUARDANDO_PECAS:
+        return "warning";
+      case StatusOrdemServico.FINALIZADO:
+        return "success";
+      case StatusOrdemServico.CANCELADO:
+        return "destructive";
+      default:
+        return "default";
+    }
+  };
+
+  const getPrioridadeVariant = (prioridade: Prioridade): "default" | "destructive" | "warning" | "info" => {
+    switch (prioridade) {
+      case Prioridade.BAIXA:
+        return "info";
+      case Prioridade.MEDIA:
+        return "warning";
+      case Prioridade.ALTA:
+        return "destructive";
+      default:
+        return "default";
+    }
+  };
+
+  // Funções legacy para manter compatibilidade com selects
   const getStatusColor = (status: StatusOrdemServico) => {
     switch (status) {
       case StatusOrdemServico.ORCAMENTO:
@@ -1422,9 +1454,9 @@ export default function OrdemServicoPage() {
                             <option value={StatusOrdemServico.FINALIZADO}>Finalizado</option>
                             <option value={StatusOrdemServico.CANCELADO}>Cancelado</option>
                           </select>
-                          <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${getPrioridadeColor(ordem.prioridade)}`}>
+                          <Badge variant={getPrioridadeVariant(ordem.prioridade)}>
                             {ordem.prioridade}
-                          </span>
+                          </Badge>
                         </div>
                         <p className="text-sm text-foreground font-medium">{ordem.cliente}</p>
                         <p className="text-sm text-muted-foreground">{ordem.telefone}</p>

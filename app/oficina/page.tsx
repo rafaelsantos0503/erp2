@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
 import { Wrench, DollarSign, Users, ClipboardCheck, TrendingUp, AlertCircle } from "lucide-react";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
@@ -146,16 +147,18 @@ export default function OficinaDashboard() {
             ) : (
               <div className="space-y-4">
                 {ordensRecentes.map((ordem) => {
-                  const statusColor = 
-                    ordem.status === "Finalizado" ? "bg-green-100 text-green-800 dark:bg-green-900/20 dark:text-green-400" :
-                    ordem.status === "Em Andamento" ? "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400" :
-                    ordem.status === "Aguardando Peças" ? "bg-orange-100 text-orange-800 dark:bg-orange-900/20 dark:text-orange-400" :
-                    "bg-gray-100 text-gray-800 dark:bg-gray-900/20 dark:text-gray-400";
+                  const getStatusVariant = () => {
+                    if (ordem.status === "Finalizado") return "success";
+                    if (ordem.status === "Em Andamento") return "info";
+                    if (ordem.status === "Aguardando Peças") return "warning";
+                    return "secondary";
+                  };
                   
-                  const prioridadeColor = 
-                    ordem.prioridade === "Alta" ? "bg-red-100 text-red-800 dark:bg-red-900/20 dark:text-red-400" :
-                    ordem.prioridade === "Média" ? "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/20 dark:text-yellow-400" :
-                    "bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400";
+                  const getPrioridadeVariant = () => {
+                    if (ordem.prioridade === "Alta") return "destructive";
+                    if (ordem.prioridade === "Média") return "warning";
+                    return "info";
+                  };
 
                   return (
                     <div
@@ -169,16 +172,16 @@ export default function OficinaDashboard() {
                         <div className="flex-1">
                           <div className="flex items-center gap-2 mb-1">
                             <p className="font-medium">{ordem.numero}</p>
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${prioridadeColor}`}>
+                            <Badge variant={getPrioridadeVariant()}>
                               {ordem.prioridade}
-                            </span>
+                            </Badge>
                           </div>
                           <p className="text-sm text-foreground">{ordem.cliente}</p>
                           <p className="text-xs text-muted-foreground">{ordem.veiculo}</p>
                           <div className="flex items-center gap-2 mt-2">
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColor}`}>
+                            <Badge variant={getStatusVariant()}>
                               {ordem.status}
-                            </span>
+                            </Badge>
                             {ordem.valor > 0 && (
                               <span className="text-sm font-semibold text-green-600 dark:text-green-400">
                                 R$ {ordem.valor.toFixed(2)}

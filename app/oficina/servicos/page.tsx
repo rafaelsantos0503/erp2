@@ -4,6 +4,7 @@ import { useState, useEffect, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
+import { Badge } from "@/components/ui/badge";
 import { Wrench, Plus, Trash2, Edit2, Clock, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Marca, Modelo } from "../types";
 import { useApi } from "@/lib/api";
@@ -291,9 +292,9 @@ export default function ServicosPage() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <p className="font-medium text-lg">{servico.nome}</p>
-                          <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/20 dark:text-blue-400">
+                          <Badge variant="info">
                             {servico.tipoAplicacao === "GERAL" ? "Geral" : `${marca?.nome || ""} ${modelo?.nome || ""}`}
-                          </span>
+                          </Badge>
                         </div>
                         <p className="text-sm text-muted-foreground mb-2">{servico.descricao}</p>
                         <div className="flex gap-4 text-sm text-muted-foreground">
