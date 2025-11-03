@@ -1612,9 +1612,9 @@ export default function OrdemServicoPage() {
         <form onSubmit={handleSubmit} className="space-y-4">
           {/* Cliente */}
           <div>
-            <label className="block text-sm font-medium mb-1">Cliente *</label>
-            <div className="relative">
-              <input
+            <Label>Cliente *</Label>
+            <div className="relative mt-1">
+              <Input
                 type="text"
                 required
                 value={clienteSearchTerm}
@@ -1623,32 +1623,35 @@ export default function OrdemServicoPage() {
                   setShowClienteDropdown(true);
                 }}
                 onFocus={() => setShowClienteDropdown(true)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm pr-24"
+                className="pr-24"
                 placeholder="Digite o nome do cliente"
               />
-              <button
+              <Button
                 type="button"
+                variant="ghost"
+                size="icon-sm"
                 onClick={() => {
                   setIsClienteModalOpen(true);
                   // Carrega clientes quando abrir o modal de cliente
                   carregarClientes();
                 }}
-                className="absolute right-2 top-2 text-primary hover:text-primary/80 transition-colors"
+                className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
               >
-                <Plus className="h-5 w-5" />
-              </button>
+                <Plus className="h-4 w-4" />
+              </Button>
             </div>
             {showClienteDropdown && clienteSearchTerm && clientesFiltrados.length > 0 && (
-              <div className="mt-1 border border-border rounded-md bg-background max-h-40 overflow-y-auto">
+              <div className="mt-1 border border-border rounded-md bg-background max-h-40 overflow-y-auto custom-scrollbar">
                 {clientesFiltrados.map((cliente) => (
-                  <button
+                  <Button
                     key={cliente.id}
                     type="button"
+                    variant="ghost"
                     onClick={() => handleClienteSelect(cliente)}
-                    className="w-full px-3 py-2 text-left text-sm hover:bg-accent border-b border-border last:border-b-0"
+                    className="w-full justify-start h-auto py-2 rounded-none border-b border-border last:border-b-0"
                   >
                     {cliente.nome}
-                  </button>
+                  </Button>
                 ))}
               </div>
             )}
@@ -1656,23 +1659,23 @@ export default function OrdemServicoPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Telefone *</label>
-              <input
+              <Label>Telefone *</Label>
+              <Input
                 type="text"
                 required
                 value={formData.telefone}
                 onChange={(e) => handleInputChange("telefone", e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                className="mt-1"
                 placeholder="(11) 99999-9999"
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Email</label>
-              <input
+              <Label>Email</Label>
+              <Input
                 type="email"
                 value={formData.email}
                 onChange={(e) => handleInputChange("email", e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                className="mt-1"
                 placeholder="email@exemplo.com"
               />
             </div>
