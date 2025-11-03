@@ -5,6 +5,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Modal } from "@/components/ui/modal";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { ClipboardCheck, Plus, Wrench, AlertCircle, CheckCircle, Clock, DollarSign, Trash2, Edit2, Eye, Car, ChevronLeft, ChevronRight } from "lucide-react";
 import type { Cliente, VeiculoCliente } from "../clientes/page";
 import type { Marca, Modelo, Funcionario } from "../types";
@@ -502,7 +506,7 @@ export default function OrdemServicoPage() {
   useEffect(() => {
     // Quando mudar o tamanho da página ou o filtro, voltar para página 0
     setPaginaAtualBackend(0);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [itensPorPagina, statusFiltro]);
 
   const handleInputChange = (field: string, value: string) => {
@@ -1441,19 +1445,24 @@ export default function OrdemServicoPage() {
                       <div className="flex-1">
                         <div className="flex items-center gap-2 mb-1">
                           <p className="font-medium text-lg">{ordem.numero}</p>
-                          <select
+                          <Select
                             value={ordem.status}
-                            onChange={(e) => alterarStatusOrdemServico(ordem.id, e.target.value as StatusOrdemServico)}
-                            onClick={(e) => e.stopPropagation()}
-                            style={{ textAlign: 'center', textAlignLast: 'center' }}
-                            className={`status-select font-semibold rounded-full px-3 py-1 border-none cursor-pointer text-xs ${getStatusColor(ordem.status)}`}
+                            onValueChange={(value) => alterarStatusOrdemServico(ordem.id, value as StatusOrdemServico)}
                           >
-                            <option value={StatusOrdemServico.ORCAMENTO}>Orçamento</option>
-                            <option value={StatusOrdemServico.EM_ANDAMENTO}>Em Andamento</option>
-                            <option value={StatusOrdemServico.AGUARDANDO_PECAS}>Aguardando Peças</option>
-                            <option value={StatusOrdemServico.FINALIZADO}>Finalizado</option>
-                            <option value={StatusOrdemServico.CANCELADO}>Cancelado</option>
-                          </select>
+                            <SelectTrigger 
+                              hideIcon
+                              className={`w-auto h-auto px-3 py-1 text-xs font-semibold border-none shadow-none ${getStatusColor(ordem.status)}`}
+                            >
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent className="custom-scrollbar">
+                              <SelectItem value={StatusOrdemServico.ORCAMENTO}>Orçamento</SelectItem>
+                              <SelectItem value={StatusOrdemServico.EM_ANDAMENTO}>Em Andamento</SelectItem>
+                              <SelectItem value={StatusOrdemServico.AGUARDANDO_PECAS}>Aguardando Peças</SelectItem>
+                              <SelectItem value={StatusOrdemServico.FINALIZADO}>Finalizado</SelectItem>
+                              <SelectItem value={StatusOrdemServico.CANCELADO}>Cancelado</SelectItem>
+                            </SelectContent>
+                          </Select>
                           <Badge variant={getPrioridadeVariant(ordem.prioridade)}>
                             {ordem.prioridade}
                           </Badge>
