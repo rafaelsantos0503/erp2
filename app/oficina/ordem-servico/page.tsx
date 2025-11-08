@@ -9,7 +9,12 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
-import { ClipboardCheck, Plus, Wrench, AlertCircle, CheckCircle, Clock, DollarSign, Trash2, Edit2, Eye, Car, ChevronLeft, ChevronRight } from "lucide-react";
+import { Calendar } from "@/components/ui/calendar";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Calendar as CalendarIcon, ClipboardCheck, Plus, Wrench, AlertCircle, CheckCircle, Clock, DollarSign, Trash2, Edit2, Eye, Car, ChevronLeft, ChevronRight } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { format, parse, parseISO, isValid } from "date-fns";
 import type { Cliente, VeiculoCliente } from "../clientes/page";
 import type { Marca, Modelo, Funcionario } from "../types";
 import type { Servico } from "../servicos/page";
@@ -17,6 +22,7 @@ import { calcularValorEstimadoServico, calcularCustoMedioAtendimento, type Confi
 import type { ClienteAPI } from "@/lib/services/cliente.service";
 import type { FuncionarioAPI } from "@/lib/services/funcionario.service";
 import type { ServicoAPI } from "@/lib/services/servico.service";
+import { configuracoesService, type MarcaAPI, type ModeloAPI } from "@/lib/services/configuracoes.service";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
 import { ordemServicoService, type OrdemServicoAPI } from "@/lib/services/ordem-servico.service";
@@ -24,6 +30,121 @@ import { financeiroService } from "@/lib/services/financeiro.service";
 import { clienteService } from "@/lib/services/cliente.service";
 import { funcionarioService } from "@/lib/services/funcionario.service";
 import { servicoService } from "@/lib/services/servico.service";
+
+const DATE_DISPLAY_FORMAT = "dd/MM/yyyy";
+const CURRENT_YEAR = new Date().getFullYear();
+const YEAR_RANGE = Array.from({ length: 16 }, (_, index) => (CURRENT_YEAR - index).toString());
+
+const parsePtBrDate = (value: string): Date | undefined => {
+  if (!value) return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return undefined;
+
+  let parsedDate: Date | undefined;
+
+  if (/^\d{4}-\d{2}-\d{2}/.test(trimmed)) {
+    const iso = parseISO(trimmed);
+    if (isValid(iso)) {
+      parsedDate = iso;
+    }
+  }
+
+  if (!parsedDate) {
+    const parsed = parse(trimmed, DATE_DISPLAY_FORMAT, new Date());
+    if (isValid(parsed)) {
+      parsedDate = parsed;
+    }
+  }
+
+  if (!parsedDate && /^\d{4}-\d{2}-\d{2}T/.test(trimmed)) {
+    const isoWithTime = parseISO(trimmed);
+    if (isValid(isoWithTime)) {
+      parsedDate = isoWithTime;
+    }
+  }
+
+  return parsedDate;
+};
+
+const formatDateFromApi = (value?: string | null): string => {
+  if (!value) return "";
+  const parsed = parsePtBrDate(value);
+  return parsed ? format(parsed, DATE_DISPLAY_FORMAT) : value;
+};
+
+type DatePickerFieldProps = {
+  value: string;
+  onChange: (value: string) => void;
+  placeholder: string;
+  disabled?: boolean;
+  allowClear?: boolean;
+  className?: string;
+};
+
+function DatePickerField({
+  value,
+  onChange,
+  placeholder,
+  disabled = false,
+  allowClear = false,
+  className,
+}: DatePickerFieldProps) {
+  const [open, setOpen] = useState(false);
+  const selectedDate = parsePtBrDate(value);
+
+  const triggerContent = (
+    <Button
+      type="button"
+      variant="outline"
+      className={cn(
+        "w-full justify-start text-left font-normal",
+        !value && "text-muted-foreground",
+        className
+      )}
+      disabled={disabled}
+    >
+      <CalendarIcon className="mr-2 h-4 w-4" />
+      {value || placeholder}
+    </Button>
+  );
+
+  if (disabled) {
+    return triggerContent;
+  }
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>{triggerContent}</PopoverTrigger>
+      <PopoverContent className="w-auto p-0" align="start">
+        <Calendar
+          mode="single"
+          captionLayout="dropdown"
+          selected={selectedDate}
+          onSelect={(date) => {
+            if (date) {
+              onChange(format(date, DATE_DISPLAY_FORMAT));
+              setOpen(false);
+            }
+          }}
+          initialFocus
+        />
+        {allowClear && value ? (
+          <Button
+            type="button"
+            variant="ghost"
+            className="w-full rounded-none border-t border-border"
+            onClick={() => {
+              onChange("");
+              setOpen(false);
+            }}
+          >
+            Limpar data
+          </Button>
+        ) : null}
+      </PopoverContent>
+    </Popover>
+  );
+}
 
 export enum StatusOrdemServico {
   ORCAMENTO = "Orçamento",
@@ -72,6 +193,7 @@ interface OrdemServico {
 }
 
 export default function OrdemServicoPage() {
+  const SELECT_SERVICO_MANUAL = "__manual__";
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isClienteModalOpen, setIsClienteModalOpen] = useState(false);
@@ -79,11 +201,12 @@ export default function OrdemServicoPage() {
   const [isModeloModalOpen, setIsModeloModalOpen] = useState(false);
   const [editingOrdemId, setEditingOrdemId] = useState<number | null>(null);
   const [isEditMode, setIsEditMode] = useState(false);
+  const [successDialog, setSuccessDialog] = useState<{ open: boolean; title: string; message: string }>({ open: false, title: "", message: "" });
   
   // Dados carregados do backend
   const [clientes, setClientes] = useState<Cliente[]>([]);
-  const [marcas, setMarcas] = useState<Marca[]>([]); // TODO: Criar serviço para marcas quando backend suportar
-  const [modelos, setModelos] = useState<Modelo[]>([]); // TODO: Criar serviço para modelos quando backend suportar
+  const [marcas, setMarcas] = useState<Marca[]>([]);
+  const [modelos, setModelos] = useState<Modelo[]>([]);
   const [funcionarios, setFuncionarios] = useState<Funcionario[]>([]);
   const [servicos, setServicos] = useState<Servico[]>([]);
   const mecanicos = funcionarios.filter(f => f.tipo === "Mecanico");
@@ -101,7 +224,7 @@ export default function OrdemServicoPage() {
     margemLucroPorAtendimento: 10,
   });
   
-  const [formData, setFormData] = useState({
+  const [formData, setFormData] = useState(() => ({
     cliente: "",
     telefone: "",
     email: "",
@@ -114,7 +237,9 @@ export default function OrdemServicoPage() {
     prioridade: Prioridade.BAIXA,
     mecanico: "",
     observacoes: "",
-  });
+    dataEntrada: format(new Date(), DATE_DISPLAY_FORMAT),
+    dataPrevisao: "",
+  }));
 
   const [editFormData, setEditFormData] = useState({
     cliente: "",
@@ -130,6 +255,8 @@ export default function OrdemServicoPage() {
     status: StatusOrdemServico.ORCAMENTO,
     mecanico: "",
     observacoes: "",
+    dataEntrada: "",
+    dataPrevisao: "",
   });
 
   const [newCliente, setNewCliente] = useState({
@@ -162,9 +289,9 @@ export default function OrdemServicoPage() {
     nome: "",
   });
 
-  const [clienteSearchTerm, setClienteSearchTerm] = useState("");
-  const [marcaSearchTerm, setMarcaSearchTerm] = useState("");
-  const [modeloSearchTerm, setModeloSearchTerm] = useState("");
+const [clienteSearchTerm, setClienteSearchTerm] = useState("");
+const [marcaSearchTerm, setMarcaSearchTerm] = useState("");
+const [modeloSearchTerm, setModeloSearchTerm] = useState("");
   const [showClienteDropdown, setShowClienteDropdown] = useState(false);
   const [showMarcaDropdown, setShowMarcaDropdown] = useState(false);
   const [showModeloDropdown, setShowModeloDropdown] = useState(false);
@@ -186,6 +313,26 @@ export default function OrdemServicoPage() {
     { id: 1, descricao: "", quantidade: "", valorUnitario: "", valorTotal: "" },
   ]);
 
+  const formatTelefone = (valor: string): string => {
+    const digits = valor.replace(/\D/g, "").slice(0, 11);
+    if (digits.length <= 2) return digits;
+    if (digits.length <= 6) return `(${digits.slice(0, 2)}) ${digits.slice(2)}`;
+    if (digits.length <= 10) {
+      return `(${digits.slice(0, 2)}) ${digits.slice(2, 6)}-${digits.slice(6)}`;
+    }
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  };
+
+  const formatEmail = (valor: string): string => {
+    return valor.replace(/\s+/g, "").replace(/[^a-zA-Z0-9@._-]/g, "").toLowerCase();
+  };
+
+  const formatAno = (valor: string): string => {
+    return valor.replace(/\D/g, "").slice(0, 4);
+  };
+
+  const limparTelefone = (valor: string): string => valor.replace(/\D/g, "");
+
   const api = useApi();
   const { empresaId } = api; // Extrai empresaId do api
   const { token } = useAuth(); // Pega token do contexto de auth
@@ -193,6 +340,7 @@ export default function OrdemServicoPage() {
   const [erro, setErro] = useState<string | null>(null);
 
   const [statusFiltro, setStatusFiltro] = useState<StatusOrdemServico | null>(null);
+  const marcasCarregadasRef = useRef(false);
   const [paginaAtualBackend, setPaginaAtualBackend] = useState(0); // 0-indexed para backend
   const [itensPorPagina, setItensPorPagina] = useState(10);
   const [totalElementos, setTotalElementos] = useState(0);
@@ -207,18 +355,18 @@ export default function OrdemServicoPage() {
       id: api.id,
       numero: api.numero,
       cliente: api.cliente,
-      telefone: api.telefone,
-      email: api.email,
+      telefone: formatTelefone(api.telefone ?? ""),
+      email: formatEmail(api.email ?? ""),
       marcaVeiculo: api.marcaVeiculo,
       modeloVeiculo: api.modeloVeiculo,
       placa: api.placa,
-      ano: api.ano,
+      ano: formatAno(api.ano ?? ""),
       cor: api.cor,
       descricaoProblema: api.descricaoProblema,
       prioridade: api.prioridade as Prioridade,
       status: api.status as StatusOrdemServico,
-      dataEntrada: api.dataEntrada,
-      dataPrevisao: api.dataPrevisao,
+      dataEntrada: formatDateFromApi(api.dataEntrada),
+      dataPrevisao: formatDateFromApi(api.dataPrevisao),
       mecanico: api.mecanico,
       observacoes: api.observacoes,
       valorTotal: api.valorTotal,
@@ -237,12 +385,12 @@ export default function OrdemServicoPage() {
   const converterFrontendparaAPI = (ordem: OrdemServico): Omit<OrdemServicoAPI, "id" | "numero"> => {
     return {
       cliente: ordem.cliente,
-      telefone: ordem.telefone,
-      email: ordem.email,
+      telefone: limparTelefone(ordem.telefone),
+      email: formatEmail(ordem.email || ""),
       marcaVeiculo: ordem.marcaVeiculo,
       modeloVeiculo: ordem.modeloVeiculo,
       placa: ordem.placa,
-      ano: ordem.ano,
+      ano: formatAno(ordem.ano || ""),
       cor: ordem.cor,
       descricaoProblema: ordem.descricaoProblema,
       prioridade: ordem.prioridade as "Baixa" | "Média" | "Alta",
@@ -304,6 +452,104 @@ export default function OrdemServicoPage() {
       });
     } catch (error) {
       console.error("Erro ao gerar conta a receber:", error);
+    }
+  };
+
+  const marcaApiIdMapRef = useRef<Map<number, string>>(new Map());
+
+  const normalizarMarcaApi = (marcasApi: MarcaAPI[]): Marca[] => {
+    const mapAtualizado = new Map(marcaApiIdMapRef.current);
+    const reverseMap = new Map<string, number>();
+    for (const [idNumerico, idApi] of mapAtualizado.entries()) {
+      reverseMap.set(idApi, idNumerico);
+    }
+
+    const marcasConvertidas = marcasApi.map((marca) => {
+      const numericFromApi = Number(marca.id);
+      let idConvertido: number;
+
+      if (!Number.isNaN(numericFromApi) && !mapAtualizado.has(numericFromApi)) {
+        idConvertido = numericFromApi;
+      } else if (reverseMap.has(marca.id)) {
+        idConvertido = reverseMap.get(marca.id)!;
+      } else {
+        idConvertido = mapAtualizado.size + 1;
+        while (mapAtualizado.has(idConvertido)) {
+          idConvertido++;
+        }
+      }
+
+      mapAtualizado.set(idConvertido, marca.id);
+      reverseMap.set(marca.id, idConvertido);
+
+      return {
+        id: idConvertido,
+        nome: marca.nome,
+      };
+    });
+    marcaApiIdMapRef.current = mapAtualizado;
+    return marcasConvertidas;
+  };
+
+  const carregarMarcas = async (force = false): Promise<Marca[]> => {
+    if (!api.empresaId || !token) return marcas;
+    if (marcasCarregadasRef.current && !force) {
+      return marcas;
+    }
+
+    try {
+      const marcasApi = await configuracoesService.getMarcas(api);
+      const marcasConvertidas = normalizarMarcaApi(marcasApi);
+      setMarcas(marcasConvertidas);
+      marcasCarregadasRef.current = true;
+      return marcasConvertidas;
+    } catch (error) {
+      console.error("Erro ao carregar marcas:", error);
+      // Em caso de erro, evita travar futuros carregamentos
+      if (force) {
+        marcasCarregadasRef.current = false;
+      }
+      return marcas;
+    }
+  };
+
+  const normalizarModeloApi = (modelosApi: ModeloAPI[]): Modelo[] => {
+    return modelosApi.map((modelo, index) => {
+      let marcaIdNumerico: number | undefined;
+      for (const [idNumerico, idApi] of marcaApiIdMapRef.current.entries()) {
+        if (idApi === modelo.marcaId) {
+          marcaIdNumerico = idNumerico;
+          break;
+        }
+      }
+      if (marcaIdNumerico === undefined) {
+        marcaIdNumerico = marcaApiIdMapRef.current.size + 1;
+        marcaApiIdMapRef.current.set(marcaIdNumerico, modelo.marcaId);
+      }
+
+      const numericId = Number(modelo.id);
+      const idConvertido = Number.isNaN(numericId) ? modelosApi.length + index + 1 : numericId;
+      return {
+        id: idConvertido,
+        marcaId: marcaIdNumerico,
+        nome: modelo.nome,
+      };
+    });
+  };
+
+  const carregarModelos = async (marcaId?: number) => {
+    if (!api.empresaId || !token || !marcaId) {
+      setModelos([]);
+      return;
+    }
+    const apiMarcaId = marcaApiIdMapRef.current.get(marcaId) ?? String(marcaId);
+    try {
+      const modelosApi = await configuracoesService.getModelos(api, apiMarcaId);
+      const modelosConvertidos = normalizarModeloApi(modelosApi);
+      setModelos(modelosConvertidos);
+    } catch (error) {
+      console.error("Erro ao carregar modelos:", error);
+      setModelos([]);
     }
   };
 
@@ -428,8 +674,8 @@ export default function OrdemServicoPage() {
       const clientesConvertidos: Cliente[] = pagina.content.map((c: ClienteAPI) => ({
         id: c.id,
         nome: c.nome,
-        telefone: c.telefone,
-        email: c.email,
+        telefone: formatTelefone(c.telefone ?? ""),
+        email: formatEmail(c.email ?? ""),
         cpf: c.cpf,
         endereco: c.endereco,
         veiculos: (c.veiculos || []).map(v => ({
@@ -448,6 +694,23 @@ export default function OrdemServicoPage() {
     }
   };
 
+  const normalizarTipoFuncionario = (tipo?: string): Funcionario["tipo"] => {
+    if (!tipo) {
+      return "Outro";
+    }
+    const valor = tipo.trim().toLowerCase();
+    if (valor.includes("mec")) {
+      return "Mecanico";
+    }
+    if (valor.includes("recep")) {
+      return "Recepcionista";
+    }
+    if (valor.includes("ger")) {
+      return "Gerente";
+    }
+    return "Outro";
+  };
+
   // Função para carregar funcionários sob demanda (quando necessário)
   const carregarFuncionarios = async () => {
     if (!api.empresaId || !token || funcionarios.length > 0) return; // Já carregou
@@ -460,7 +723,7 @@ export default function OrdemServicoPage() {
         nome: f.nome,
         telefone: f.telefone,
         email: f.email,
-        tipo: f.tipo,
+        tipo: normalizarTipoFuncionario(f.tipo),
         tipoContratacao: f.tipoContratacao,
         valorDespesa: f.valorDespesa,
         cpf: f.cpf,
@@ -510,8 +773,17 @@ export default function OrdemServicoPage() {
   }, [itensPorPagina, statusFiltro]);
 
   const handleInputChange = (field: string, value: string) => {
+    let processedValue = value;
+    if (field === "telefone") {
+      processedValue = formatTelefone(value);
+    } else if (field === "email") {
+      processedValue = formatEmail(value);
+    } else if (field === "ano") {
+      processedValue = formatAno(value);
+    }
+
     setFormData((prev) => {
-      const newData = { ...prev, [field]: value };
+      const newData = { ...prev, [field]: processedValue };
       
       // Se mudou o funcionário, recalcula os itens que têm serviço selecionado
       if (field === "mecanico") {
@@ -532,7 +804,7 @@ export default function OrdemServicoPage() {
                     return {
                       ...item,
                       valorUnitario: calculo.valorTotal.toFixed(2),
-                      valorTotal: (parseFloat(item.quantidade) || 1) * calculo.valorTotal,
+                      valorTotal: ((parseFloat(item.quantidade) || 1) * calculo.valorTotal).toFixed(2),
                     };
                   }
                 }
@@ -554,52 +826,60 @@ export default function OrdemServicoPage() {
   ) => {
     setItens((prev) =>
       prev.map((item) => {
-        if (item.id === id) {
-          const updated = { ...item, [field]: value };
-          
-          // Se selecionou um serviço, preenche automaticamente
-          if (field === "servicoId") {
-            if (value) {
-              const servicoSelecionado = servicos.find(s => s.id === parseInt(value as string));
-              if (servicoSelecionado) {
-                updated.descricao = servicoSelecionado.nome;
-                updated.tempoEstimado = servicoSelecionado.tempoEstimadoHoras;
-                updated.quantidade = "1";
-                
-                // Calcula o valor se tiver funcionário selecionado
-                // Usa formData.mecanico ou o mecanico que pode ter sido atualizado
-                const mecanicoAtual = formData.mecanico;
-                if (mecanicoAtual) {
-                  const funcionarioSelecionado = mecanicos.find(m => m.nome === mecanicoAtual);
-                  if (funcionarioSelecionado) {
-                    const calculo = calcularValorEstimadoServico(
-                      servicoSelecionado,
-                      funcionarioSelecionado,
-                      configuracoesFinanceiras
-                    );
-                    updated.valorUnitario = calculo.valorTotal.toFixed(2);
-                    updated.valorTotal = calculo.valorTotal.toFixed(2);
-                  }
-                }
+        if (item.id !== id) {
+          return item;
+        }
+
+        const updated: ItemServico = { ...item };
+
+        if (field === "servicoId") {
+          const isManualSelection =
+            value === SELECT_SERVICO_MANUAL || value === "";
+          const novoServicoId = isManualSelection ? undefined : Number(value);
+
+          updated.servicoId = novoServicoId;
+
+          if (!novoServicoId) {
+            updated.descricao = "";
+            updated.tempoEstimado = undefined;
+            updated.valorUnitario = "";
+            updated.valorTotal = "0.00";
+            return updated;
+          }
+
+          const servicoSelecionado = servicos.find((s) => s.id === novoServicoId);
+          if (servicoSelecionado) {
+            updated.descricao = servicoSelecionado.nome;
+            updated.tempoEstimado = servicoSelecionado.tempoEstimadoHoras;
+            updated.quantidade = "1";
+
+            const mecanicoAtual = formData.mecanico;
+            if (mecanicoAtual) {
+              const funcionarioSelecionado = mecanicos.find((m) => m.nome === mecanicoAtual);
+              if (funcionarioSelecionado) {
+                const calculo = calcularValorEstimadoServico(
+                  servicoSelecionado,
+                  funcionarioSelecionado,
+                  configuracoesFinanceiras
+                );
+                updated.valorUnitario = calculo.valorTotal.toFixed(2);
+                updated.valorTotal = calculo.valorTotal.toFixed(2);
               }
-            } else {
-              // Se limpou o serviço, limpa também os campos relacionados
-              updated.tempoEstimado = undefined;
-              updated.valorUnitario = "";
-              updated.valorTotal = "0.00";
             }
           }
-          
-          // Recalcula se mudou quantidade ou valor unitário manualmente
-          if (field === "quantidade" || field === "valorUnitario") {
-            const qtd = parseFloat(updated.quantidade) || 0;
-            const valor = parseFloat(updated.valorUnitario) || 0;
-            updated.valorTotal = (qtd * valor).toFixed(2);
-          }
-          
+
           return updated;
         }
-        return item;
+
+        (updated as Record<keyof ItemServico, string | number | undefined>)[field] = value as never;
+
+        if (field === "quantidade" || field === "valorUnitario") {
+          const qtd = parseFloat(updated.quantidade) || 0;
+          const valor = parseFloat(updated.valorUnitario) || 0;
+          updated.valorTotal = (qtd * valor).toFixed(2);
+        }
+
+        return updated;
       })
     );
   };
@@ -618,8 +898,17 @@ export default function OrdemServicoPage() {
   };
 
   const handleEditInputChange = (field: string, value: string) => {
+    let processedValue = value;
+    if (field === "telefone") {
+      processedValue = formatTelefone(value);
+    } else if (field === "email") {
+      processedValue = formatEmail(value);
+    } else if (field === "ano") {
+      processedValue = formatAno(value);
+    }
+
     setEditFormData((prev) => {
-      const newData = { ...prev, [field]: value };
+      const newData = { ...prev, [field]: processedValue };
       
       // Se mudou o funcionário, recalcula os itens que têm serviço selecionado
       if (field === "mecanico") {
@@ -639,7 +928,7 @@ export default function OrdemServicoPage() {
                     return {
                       ...item,
                       valorUnitario: calculo.valorTotal.toFixed(2),
-                      valorTotal: (parseFloat(item.quantidade) || 1) * calculo.valorTotal,
+                      valorTotal: ((parseFloat(item.quantidade) || 1) * calculo.valorTotal).toFixed(2),
                     };
                   }
                 }
@@ -661,50 +950,59 @@ export default function OrdemServicoPage() {
   ) => {
     setEditItens((prev) =>
       prev.map((item) => {
-        if (item.id === id) {
-          const updated = { ...item, [field]: value };
-          
-          // Se selecionou um serviço, preenche automaticamente
-          if (field === "servicoId") {
-            if (value) {
-              const servicoSelecionado = servicos.find(s => s.id === parseInt(value as string));
-              if (servicoSelecionado) {
-                updated.descricao = servicoSelecionado.nome;
-                updated.tempoEstimado = servicoSelecionado.tempoEstimadoHoras;
-                updated.quantidade = "1";
-                
-                // Calcula o valor se tiver funcionário selecionado
-                if (editFormData.mecanico) {
-                  const funcionarioSelecionado = mecanicos.find(m => m.nome === editFormData.mecanico);
-                  if (funcionarioSelecionado) {
-                    const calculo = calcularValorEstimadoServico(
-                      servicoSelecionado,
-                      funcionarioSelecionado,
-                      configuracoesFinanceiras
-                    );
-                    updated.valorUnitario = calculo.valorTotal.toFixed(2);
-                    updated.valorTotal = calculo.valorTotal.toFixed(2);
-                  }
-                }
+        if (item.id !== id) {
+          return item;
+        }
+
+        const updated: ItemServico = { ...item };
+
+        if (field === "servicoId") {
+          const isManualSelection =
+            value === SELECT_SERVICO_MANUAL || value === "";
+          const novoServicoId = isManualSelection ? undefined : Number(value);
+
+          updated.servicoId = novoServicoId;
+
+          if (!novoServicoId) {
+            updated.descricao = "";
+            updated.tempoEstimado = undefined;
+            updated.valorUnitario = "";
+            updated.valorTotal = "0.00";
+            return updated;
+          }
+
+          const servicoSelecionado = servicos.find((s) => s.id === novoServicoId);
+          if (servicoSelecionado) {
+            updated.descricao = servicoSelecionado.nome;
+            updated.tempoEstimado = servicoSelecionado.tempoEstimadoHoras;
+            updated.quantidade = "1";
+
+            if (editFormData.mecanico) {
+              const funcionarioSelecionado = mecanicos.find((m) => m.nome === editFormData.mecanico);
+              if (funcionarioSelecionado) {
+                const calculo = calcularValorEstimadoServico(
+                  servicoSelecionado,
+                  funcionarioSelecionado,
+                  configuracoesFinanceiras
+                );
+                updated.valorUnitario = calculo.valorTotal.toFixed(2);
+                updated.valorTotal = calculo.valorTotal.toFixed(2);
               }
-            } else {
-              // Se limpou o serviço, limpa também os campos relacionados
-              updated.tempoEstimado = undefined;
-              updated.valorUnitario = "";
-              updated.valorTotal = "0.00";
             }
           }
-          
-          // Recalcula se mudou quantidade ou valor unitário manualmente
-          if (field === "quantidade" || field === "valorUnitario") {
-            const qtd = parseFloat(updated.quantidade) || 0;
-            const valor = parseFloat(updated.valorUnitario) || 0;
-            updated.valorTotal = (qtd * valor).toFixed(2);
-          }
-          
+
           return updated;
         }
-        return item;
+
+        (updated as Record<keyof ItemServico, string | number | undefined>)[field] = value as never;
+
+        if (field === "quantidade" || field === "valorUnitario") {
+          const qtd = parseFloat(updated.quantidade) || 0;
+          const valor = parseFloat(updated.valorUnitario) || 0;
+          updated.valorTotal = (qtd * valor).toFixed(2);
+        }
+
+        return updated;
       })
     );
   };
@@ -726,8 +1024,8 @@ export default function OrdemServicoPage() {
     setFormData({
       ...formData,
       cliente: cliente.nome,
-      telefone: cliente.telefone,
-      email: cliente.email,
+      telefone: formatTelefone(cliente.telefone),
+      email: formatEmail(cliente.email || ""),
       marcaVeiculo: "",
       modeloVeiculo: "",
       placa: "",
@@ -744,6 +1042,8 @@ export default function OrdemServicoPage() {
     setMarcaSearchTerm(marca.nome);
     setModeloSearchTerm("");
     setShowMarcaDropdown(false);
+    setShowModeloDropdown(false);
+    carregarModelos(marca.id);
   };
 
   const handleModeloSelect = (modelo: Modelo) => {
@@ -809,8 +1109,10 @@ export default function OrdemServicoPage() {
   };
 
   const handleAddNewVeiculo = () => {
+    carregarMarcas();
     setMarcaSearchTerm("");
     setModeloSearchTerm("");
+    setShowModeloDropdown(false);
     setIsNewVeiculoModalOpen(true);
     setNewVeiculoForm({ id: 0, marca: "", modelo: "", placa: "", ano: "", cor: "" });
   };
@@ -823,6 +1125,7 @@ export default function OrdemServicoPage() {
     setIsNewVeiculoModalOpen(false);
     setMarcaSearchTerm("");
     setModeloSearchTerm("");
+    setShowModeloDropdown(false);
   };
 
   const handleRemoveNewVeiculo = (id: number) => {
@@ -841,7 +1144,7 @@ export default function OrdemServicoPage() {
       marcaVeiculo: veiculo.marca,
       modeloVeiculo: veiculo.modelo,
       placa: veiculo.placa,
-      ano: veiculo.ano || "",
+      ano: formatAno(veiculo.ano || ""),
       cor: veiculo.cor || "",
     });
     setModeloSearchTerm(`${veiculo.marca} ${veiculo.modelo} - ${veiculo.placa}`);
@@ -878,32 +1181,64 @@ export default function OrdemServicoPage() {
     handleVeiculoClienteSelect(novoVeiculo);
     setIsVeiculoClienteModalOpen(false);
     setNewVeiculoCliente({ marca: "", modelo: "", placa: "", ano: "", cor: "" });
+    setShowModeloDropdown(false);
   };
 
   const handleOpenVeiculoClienteModal = () => {
+    carregarMarcas();
     const marcaSelecionada = marcas.find(m => m.nome === formData.marcaVeiculo);
     if (marcaSelecionada) {
       setNewVeiculoCliente({ marca: marcaSelecionada.nome, modelo: "", placa: "", ano: "", cor: "" });
     } else {
       setNewVeiculoCliente({ marca: "", modelo: "", placa: "", ano: "", cor: "" });
     }
+    setShowModeloDropdown(false);
     setIsVeiculoClienteModalOpen(true);
   };
 
-  const handleNewMarcaSubmit = (e: React.FormEvent) => {
+  const handleNewMarcaSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    const novoId = marcas.length + 1;
-    const novaMarca: Marca = {
-      id: novoId,
-      nome: newMarca.nome,
-    };
-    setMarcas([...marcas, novaMarca]);
-    
-    // Auto-select da marca recém criada
-    handleMarcaSelect(novaMarca);
-    
-    setIsMarcaModalOpen(false);
-    setNewMarca({ nome: "" });
+    const nomeMarca = newMarca.nome.trim();
+    if (!nomeMarca) return;
+
+    try {
+      const marcaCriadaApi = await configuracoesService.createMarca(api, { nome: nomeMarca });
+      const [marcaConvertida] = normalizarMarcaApi([marcaCriadaApi]);
+      const marcasAtualizadas = await carregarMarcas(true);
+      const marcaSelecionada =
+        (marcaConvertida
+          ? marcasAtualizadas.find((marca) => marca.id === marcaConvertida.id)
+          : undefined) ??
+        marcasAtualizadas.find((marca) => marca.nome.toLowerCase() === nomeMarca.toLowerCase());
+
+      if (marcaSelecionada) {
+        marcaApiIdMapRef.current.set(marcaSelecionada.id, marcaCriadaApi.id);
+        handleMarcaSelect(marcaSelecionada);
+      } else if (marcaConvertida) {
+        marcaApiIdMapRef.current.set(marcaConvertida.id, marcaCriadaApi.id);
+        setMarcas((prev) => [...prev, marcaConvertida]);
+        marcasCarregadasRef.current = true;
+        handleMarcaSelect(marcaConvertida);
+      } else {
+        const novoId = marcas.length + 1;
+        const fallbackMarca: Marca = { id: novoId, nome: nomeMarca };
+        marcaApiIdMapRef.current.set(novoId, marcaCriadaApi.id);
+        setMarcas((prev) => [...prev, fallbackMarca]);
+        marcasCarregadasRef.current = true;
+        handleMarcaSelect(fallbackMarca);
+      }
+    } catch (error) {
+      console.error("Erro ao criar marca:", error);
+      const novoId = marcas.length + 1;
+      const fallbackMarca: Marca = { id: novoId, nome: nomeMarca };
+      marcaApiIdMapRef.current.set(novoId, String(novoId));
+      setMarcas((prev) => [...prev, fallbackMarca]);
+      marcasCarregadasRef.current = true;
+      handleMarcaSelect(fallbackMarca);
+    } finally {
+      setIsMarcaModalOpen(false);
+      setNewMarca({ nome: "" });
+    }
   };
 
   const handleNewModeloSubmit = (e: React.FormEvent) => {
@@ -924,12 +1259,14 @@ export default function OrdemServicoPage() {
   };
 
   const handleOpenModeloModal = () => {
+    carregarMarcas();
     const marcaSelecionada = marcas.find(m => m.nome === formData.marcaVeiculo);
     if (marcaSelecionada) {
       setNewModelo({ marcaId: marcaSelecionada.id.toString(), nome: "" });
     } else {
       setNewModelo({ marcaId: "", nome: "" });
     }
+    setShowModeloDropdown(false);
     setIsModeloModalOpen(true);
   };
 
@@ -939,13 +1276,14 @@ export default function OrdemServicoPage() {
     setErro(null);
 
     try {
-    const hoje = new Date().toLocaleDateString('pt-BR');
-    
     const valorTotal = itens.reduce((sum, item) => {
       const qtd = parseFloat(item.quantidade) || 0;
       const valor = parseFloat(item.valorUnitario) || 0;
       return sum + (qtd * valor);
     }, 0);
+
+    const hoje = format(new Date(), DATE_DISPLAY_FORMAT);
+    const dataEntradaSelecionada = formData.dataEntrada || hoje;
 
     const novaOrdem: OrdemServico = {
         id: 0, // Será definido pelo backend
@@ -961,8 +1299,8 @@ export default function OrdemServicoPage() {
       descricaoProblema: formData.descricaoProblema,
       prioridade: formData.prioridade as Prioridade,
         status: StatusOrdemServico.ORCAMENTO, // Novas ordens sempre começam como Orçamento
-      dataEntrada: hoje,
-      dataPrevisao: "",
+      dataEntrada: dataEntradaSelecionada,
+      dataPrevisao: formData.dataPrevisao,
       mecanico: formData.mecanico,
       observacoes: formData.observacoes,
       valorTotal: valorTotal,
@@ -989,12 +1327,21 @@ export default function OrdemServicoPage() {
       prioridade: Prioridade.BAIXA,
       mecanico: "",
       observacoes: "",
+      dataEntrada: format(new Date(), DATE_DISPLAY_FORMAT),
+      dataPrevisao: "",
     });
     setClienteSearchTerm("");
     setMarcaSearchTerm("");
     setModeloSearchTerm("");
     setSelectedClienteId(null);
     setItens([{ id: 1, descricao: "", quantidade: "", valorUnitario: "", valorTotal: "" }]);
+    
+    // Mostrar dialog de sucesso
+    setSuccessDialog({
+      open: true,
+      title: "Sucesso!",
+      message: "Ordem de serviço criada com sucesso!"
+    });
     } catch (error) {
       console.error("Erro ao criar ordem:", error);
       setErro("Erro ao criar ordem de serviço. Tente novamente.");
@@ -1036,6 +1383,8 @@ export default function OrdemServicoPage() {
       descricaoProblema: editFormData.descricaoProblema,
       prioridade: editFormData.prioridade as Prioridade,
         status: novoStatus,
+      dataEntrada: editFormData.dataEntrada || ordemOriginal.dataEntrada,
+      dataPrevisao: editFormData.dataPrevisao,
       mecanico: editFormData.mecanico,
       observacoes: editFormData.observacoes,
       valorTotal: valorTotal,
@@ -1063,6 +1412,13 @@ export default function OrdemServicoPage() {
 
     setIsEditModalOpen(false);
     setEditingOrdemId(null);
+    
+    // Mostrar dialog de sucesso
+    setSuccessDialog({
+      open: true,
+      title: "Sucesso!",
+      message: "Ordem de serviço atualizada com sucesso!"
+    });
     } catch (error) {
       console.error("Erro ao atualizar ordem:", error);
       setErro("Erro ao atualizar ordem de serviço. Tente novamente.");
@@ -1127,7 +1483,31 @@ export default function OrdemServicoPage() {
     }
   };
 
-  const handleEdit = (ordem: OrdemServico) => {
+  const openCreateModal = async () => {
+    await carregarMarcas(true);
+    setModelos([]);
+    carregarClientes();
+    carregarFuncionarios();
+    carregarServicos();
+    setIsModalOpen(true);
+  };
+
+  const handleEdit = async (ordem: OrdemServico) => {
+    const marcasDisponiveisInicial = await carregarMarcas();
+    let marcaCorrespondente =
+      marcasDisponiveisInicial.find((marca) => marca.nome === ordem.marcaVeiculo);
+
+    if (!marcaCorrespondente) {
+      const marcasAtualizadas = await carregarMarcas(true);
+      marcaCorrespondente = marcasAtualizadas.find((marca) => marca.nome === ordem.marcaVeiculo);
+    }
+
+    if (marcaCorrespondente) {
+      await carregarModelos(marcaCorrespondente.id);
+    } else {
+      setModelos([]);
+    }
+
     setEditingOrdemId(ordem.id);
     setEditFormData({
       cliente: ordem.cliente,
@@ -1143,12 +1523,19 @@ export default function OrdemServicoPage() {
       status: ordem.status,
       mecanico: ordem.mecanico,
       observacoes: ordem.observacoes,
+      dataEntrada: formatDateFromApi(ordem.dataEntrada),
+      dataPrevisao: formatDateFromApi(ordem.dataPrevisao),
     });
     if (ordem.itens && ordem.itens.length > 0) {
       setEditItens(ordem.itens);
     } else {
       setEditItens([{ id: 1, descricao: "", quantidade: "", valorUnitario: "", valorTotal: "" }]);
     }
+    setMarcaSearchTerm(ordem.marcaVeiculo);
+    setModeloSearchTerm(ordem.modeloVeiculo);
+    setShowMarcaDropdown(false);
+    setShowModeloDropdown(false);
+    setSelectedClienteId(null);
     setIsEditMode(true);
     setIsEditModalOpen(true);
     // Carrega dados necessários quando abrir o modal de edição
@@ -1157,7 +1544,22 @@ export default function OrdemServicoPage() {
     carregarServicos();
   };
 
-  const handleView = (ordem: OrdemServico) => {
+  const handleView = async (ordem: OrdemServico) => {
+    const marcasDisponiveisInicial = await carregarMarcas();
+    let marcaCorrespondente =
+      marcasDisponiveisInicial.find((marca) => marca.nome === ordem.marcaVeiculo);
+
+    if (!marcaCorrespondente) {
+      const marcasAtualizadas = await carregarMarcas(true);
+      marcaCorrespondente = marcasAtualizadas.find((marca) => marca.nome === ordem.marcaVeiculo);
+    }
+
+    if (marcaCorrespondente) {
+      await carregarModelos(marcaCorrespondente.id);
+    } else {
+      setModelos([]);
+    }
+
     setEditingOrdemId(ordem.id);
     setEditFormData({
       cliente: ordem.cliente,
@@ -1173,12 +1575,19 @@ export default function OrdemServicoPage() {
       status: ordem.status,
       mecanico: ordem.mecanico,
       observacoes: ordem.observacoes,
+      dataEntrada: formatDateFromApi(ordem.dataEntrada),
+      dataPrevisao: formatDateFromApi(ordem.dataPrevisao),
     });
     if (ordem.itens && ordem.itens.length > 0) {
       setEditItens(ordem.itens);
     } else {
       setEditItens([{ id: 1, descricao: "", quantidade: "", valorUnitario: "", valorTotal: "" }]);
     }
+    setMarcaSearchTerm(ordem.marcaVeiculo);
+    setModeloSearchTerm(ordem.modeloVeiculo);
+    setShowMarcaDropdown(false);
+    setShowModeloDropdown(false);
+    setSelectedClienteId(null);
     setIsEditMode(false);
     setIsEditModalOpen(true);
     // Carrega dados necessários quando abrir o modal de edição
@@ -1279,17 +1688,32 @@ export default function OrdemServicoPage() {
   const modelosFiltrados = modelosDisponiveis.filter(m =>
     m.nome.toLowerCase().includes(modeloSearchTerm.toLowerCase())
   );
+
+  const modelosFiltradosNovoVeiculo = modelos.filter(m =>
+    (!newVeiculoCliente.marca ||
+      marcas.find(marca => marca.nome === newVeiculoCliente.marca)?.id === m.marcaId) &&
+    m.nome.toLowerCase().includes((newVeiculoCliente.modelo || "").toLowerCase())
+  );
+
+  const modelosFiltradosNovoCliente = modelos.filter(m =>
+    (!newVeiculoForm.marca ||
+      marcas.find(marca => marca.nome === newVeiculoForm.marca)?.id === m.marcaId) &&
+    m.nome.toLowerCase().includes((newVeiculoForm.modelo || "").toLowerCase())
+  );
   
-  // Se há cliente selecionado com veículos, mostra os veículos do cliente
-  const veiculosDisponiveis = selectedClienteId && veiculosDoCliente.length > 0 
-    ? veiculosDoCliente 
-    : modelosDisponiveis;
-  
-  const veiculosFiltrados = veiculosDoCliente.length > 0 && selectedClienteId
-    ? veiculosDoCliente.filter(v => 
-        `${v.marca} ${v.modelo} - ${v.placa}`.toLowerCase().includes(modeloSearchTerm.toLowerCase())
-      )
-    : modelosFiltrados;
+  const veiculosFiltrados: VeiculoCliente[] =
+    selectedClienteId && veiculosDoCliente.length > 0
+      ? veiculosDoCliente.filter(v =>
+          `${v.marca} ${v.modelo} - ${v.placa}`.toLowerCase().includes(modeloSearchTerm.toLowerCase())
+        )
+      : modelosFiltrados.map((modelo) => ({
+          id: modelo.id,
+          marca: marcas.find((m) => m.id === modelo.marcaId)?.nome ?? "",
+          modelo: modelo.nome,
+          placa: "",
+          ano: "",
+          cor: "",
+        }));
 
   // Calcular ordens filtradas
   // Contar ordens por status para os cards (usando dados carregados)
@@ -1317,13 +1741,7 @@ export default function OrdemServicoPage() {
           <h1 className="text-3xl font-bold tracking-tight">Ordens de Serviço</h1>
           <p className="text-muted-foreground">Gestão de ordens de serviço da oficina</p>
         </div>
-        <Button onClick={() => {
-          setIsModalOpen(true);
-          // Carrega dados necessários quando abrir o modal
-          carregarClientes();
-          carregarFuncionarios();
-          carregarServicos();
-        }} className="gap-2">
+        <Button onClick={openCreateModal} className="gap-2">
           <Plus className="h-4 w-4" />
           Nova Ordem
         </Button>
@@ -1667,6 +2085,8 @@ export default function OrdemServicoPage() {
                 onChange={(e) => handleInputChange("telefone", e.target.value)}
                 className="mt-1"
                 placeholder="(11) 99999-9999"
+                maxLength={15}
+                inputMode="tel"
               />
             </div>
             <div>
@@ -1677,6 +2097,29 @@ export default function OrdemServicoPage() {
                 onChange={(e) => handleInputChange("email", e.target.value)}
                 className="mt-1"
                 placeholder="email@exemplo.com"
+                inputMode="email"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <Label>Data de Entrada *</Label>
+              <DatePickerField
+                value={formData.dataEntrada}
+                onChange={(value) => setFormData((prev) => ({ ...prev, dataEntrada: value }))}
+                placeholder="Selecione a data de entrada"
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label>Previsão de Entrega</Label>
+              <DatePickerField
+                value={formData.dataPrevisao}
+                onChange={(value) => setFormData((prev) => ({ ...prev, dataPrevisao: value }))}
+                placeholder="Selecione a data de previsão"
+                allowClear
+                className="mt-1"
               />
             </div>
           </div>
@@ -1685,9 +2128,9 @@ export default function OrdemServicoPage() {
           {selectedClienteId && veiculosDoCliente.length > 0 ? (
             // Se o cliente tem veículos cadastrados, mostra dropdown de veículos
             <div>
-              <label className="block text-sm font-medium mb-1">Veículo *</label>
-              <div className="relative">
-                <input
+              <Label>Veículo *</Label>
+              <div className="relative mt-1">
+                <Input
                   type="text"
                   required
                   value={modeloSearchTerm}
@@ -1696,29 +2139,32 @@ export default function OrdemServicoPage() {
                     setShowModeloDropdown(true);
                   }}
                   onFocus={() => setShowModeloDropdown(true)}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm pr-24"
+                  className="pr-24"
                   placeholder="Digite ou selecione o veículo"
                 />
-                <button
+                <Button
                   type="button"
+                  variant="ghost"
+                  size="icon-sm"
                   onClick={handleOpenVeiculoClienteModal}
-                  className="absolute right-2 top-2 text-primary hover:text-primary/80 transition-colors"
+                  className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
                 >
-                  <Plus className="h-5 w-5" />
-                </button>
+                  <Plus className="h-4 w-4" />
+                </Button>
               </div>
               {showModeloDropdown && modeloSearchTerm && veiculosFiltrados.length > 0 && (
-                <div className="mt-1 border border-border rounded-md bg-background max-h-40 overflow-y-auto">
+                <div className="mt-1 border border-border rounded-md bg-background max-h-40 overflow-y-auto custom-scrollbar">
                   {veiculosFiltrados.map((veiculo) => (
-                    <button
+                    <Button
                       key={veiculo.id}
                       type="button"
+                      variant="ghost"
                       onClick={() => handleVeiculoClienteSelect(veiculo)}
-                      className="w-full px-3 py-2 text-left text-sm hover:bg-accent border-b border-border last:border-b-0"
+                      className="w-full justify-start h-auto py-2 rounded-none border-b border-border last:border-b-0"
                     >
                       <Car className="inline h-4 w-4 mr-2" />
                       {veiculo.marca} {veiculo.modelo} - {veiculo.placa}
-                    </button>
+                    </Button>
                   ))}
                 </div>
               )}
@@ -1727,9 +2173,9 @@ export default function OrdemServicoPage() {
             // Se não tem veículos cadastrados, mostra marca/modelo normais
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-sm font-medium mb-1">Marca *</label>
-                <div className="relative">
-                  <input
+                <Label>Marca *</Label>
+                <div className="relative mt-1">
+                  <Input
                     type="text"
                     required
                     value={marcaSearchTerm}
@@ -1737,69 +2183,85 @@ export default function OrdemServicoPage() {
                       setMarcaSearchTerm(e.target.value);
                       setShowMarcaDropdown(true);
                     }}
-                    onFocus={() => setShowMarcaDropdown(true)}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm pr-24"
+                    onFocus={() => {
+                      carregarMarcas();
+                      setShowMarcaDropdown(true);
+                    }}
+                    className="pr-24"
                     placeholder="Digite a marca"
                   />
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={() => setIsMarcaModalOpen(true)}
-                    className="absolute right-2 top-2 text-primary hover:text-primary/80 transition-colors"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
                   >
-                    <Plus className="h-5 w-5" />
-                  </button>
+                    <Plus className="h-4 w-4" />
+                  </Button>
                 </div>
                 {showMarcaDropdown && marcaSearchTerm && marcasFiltradas.length > 0 && (
-                  <div className="mt-1 border border-border rounded-md bg-background max-h-40 overflow-y-auto">
+                  <div className="mt-1 border border-border rounded-md bg-background max-h-40 overflow-y-auto custom-scrollbar">
                     {marcasFiltradas.map((marca) => (
-                      <button
+                      <Button
                         key={marca.id}
                         type="button"
+                        variant="ghost"
                         onClick={() => handleMarcaSelect(marca)}
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-accent border-b border-border last:border-b-0"
+                        className="w-full justify-start h-auto py-2 rounded-none border-b border-border last:border-b-0"
                       >
                         {marca.nome}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 )}
               </div>
               <div>
-                <label className="block text-sm font-medium mb-1">Modelo *</label>
-                <div className="relative">
-                  <input
+                <Label>Modelo *</Label>
+                <div className="relative mt-1">
+                  <Input
                     type="text"
                     required
                     value={modeloSearchTerm}
                     onChange={(e) => {
-                      setModeloSearchTerm(e.target.value);
+                      const valor = e.target.value;
+                      setModeloSearchTerm(valor);
                       setShowModeloDropdown(true);
                     }}
-                    onFocus={() => setShowModeloDropdown(true)}
-                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm pr-24"
+                    onFocus={() => {
+                      if (formData.marcaVeiculo) {
+                        const marcaSelecionada = marcas.find(m => m.nome === formData.marcaVeiculo);
+                        carregarModelos(marcaSelecionada?.id);
+                      }
+                      setShowModeloDropdown(true);
+                    }}
+                    className="pr-24"
                     placeholder="Digite o modelo"
                     disabled={!formData.marcaVeiculo}
                   />
-                  <button
+                  <Button
                     type="button"
+                    variant="ghost"
+                    size="icon-sm"
                     onClick={handleOpenModeloModal}
-                    className="absolute right-2 top-2 text-primary hover:text-primary/80 transition-colors"
+                    className="absolute right-1 top-1/2 -translate-y-1/2 h-8 w-8"
                     disabled={!formData.marcaVeiculo}
                   >
-                    <Plus className="h-5 w-5" />
-                  </button>
+                    <Plus className="h-4 w-4" />
+                  </Button>
                 </div>
                 {showModeloDropdown && formData.marcaVeiculo && modeloSearchTerm && modelosFiltrados.length > 0 && (
-                  <div className="mt-1 border border-border rounded-md bg-background max-h-40 overflow-y-auto">
+                  <div className="mt-1 border border-border rounded-md bg-background max-h-40 overflow-y-auto custom-scrollbar">
                     {modelosFiltrados.map((modelo) => (
-                      <button
+                      <Button
                         key={modelo.id}
                         type="button"
+                        variant="ghost"
                         onClick={() => handleModeloSelect(modelo)}
-                        className="w-full px-3 py-2 text-left text-sm hover:bg-accent border-b border-border last:border-b-0"
+                        className="w-full justify-start h-auto py-2 rounded-none border-b border-border last:border-b-0"
                       >
                         {modelo.nome}
-                      </button>
+                      </Button>
                     ))}
                   </div>
                 )}
@@ -1809,89 +2271,101 @@ export default function OrdemServicoPage() {
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Placa *</label>
-              <input
+              <Label>Placa *</Label>
+              <Input
                 type="text"
                 required
                 value={formData.placa}
                 onChange={(e) => handleInputChange("placa", e.target.value.toUpperCase())}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                readOnly={selectedClienteId && veiculosDoCliente.length > 0}
+                className="mt-1"
+                readOnly={!!selectedClienteId && veiculosDoCliente.length > 0}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Ano *</label>
-              <input
-                type="text"
-                required
+              <Label>Ano *</Label>
+              <Select
                 value={formData.ano}
-                onChange={(e) => handleInputChange("ano", e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                readOnly={selectedClienteId && veiculosDoCliente.length > 0}
-              />
+                onValueChange={(value) => handleInputChange("ano", value)}
+                disabled={!!selectedClienteId && veiculosDoCliente.length > 0}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Selecione o ano" />
+                </SelectTrigger>
+                <SelectContent>
+                  {YEAR_RANGE.map((year) => (
+                    <SelectItem key={year} value={year}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="block text-sm font-medium mb-1">Cor *</label>
-              <input
+              <Label>Cor *</Label>
+              <Input
                 type="text"
                 required
                 value={formData.cor}
                 onChange={(e) => handleInputChange("cor", e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                readOnly={selectedClienteId && veiculosDoCliente.length > 0}
+                className="mt-1"
+                readOnly={!!selectedClienteId && veiculosDoCliente.length > 0}
               />
             </div>
             <div>
-              <label className="block text-sm font-medium mb-1">Prioridade *</label>
-              <select
-                value={formData.prioridade}
-                onChange={(e) => handleInputChange("prioridade", e.target.value)}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value={Prioridade.BAIXA}>Baixa</option>
-                <option value={Prioridade.MEDIA}>Média</option>
-                <option value={Prioridade.ALTA}>Alta</option>
-              </select>
+              <Label>Prioridade *</Label>
+              <Select value={formData.prioridade} onValueChange={(value) => handleInputChange("prioridade", value)}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value={Prioridade.BAIXA}>Baixa</SelectItem>
+                  <SelectItem value={Prioridade.MEDIA}>Média</SelectItem>
+                  <SelectItem value={Prioridade.ALTA}>Alta</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Descrição do Problema *</label>
-            <textarea
+            <Label>Descrição do Problema *</Label>
+            <Textarea
               required
               value={formData.descricaoProblema}
               onChange={(e) => handleInputChange("descricaoProblema", e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="mt-1"
               rows={3}
             />
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Mecânico Responsável *</label>
-            <select
+            <Label>Mecânico Responsável *</Label>
+            <Select
               required
               value={formData.mecanico}
-              onChange={(e) => handleInputChange("mecanico", e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              onValueChange={(value) => handleInputChange("mecanico", value)}
             >
-              <option value="">Selecione um mecânico</option>
-              {mecanicos.map((mecanico) => (
-                <option key={mecanico.id} value={mecanico.nome}>
-                  {mecanico.nome}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="mt-1">
+                <SelectValue placeholder="Selecione um mecânico" />
+              </SelectTrigger>
+              <SelectContent>
+                {mecanicos.map((mecanico) => (
+                  <SelectItem key={mecanico.id} value={mecanico.nome}>
+                    {mecanico.nome}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div>
-            <label className="block text-sm font-medium mb-1">Observações</label>
-            <textarea
+            <Label>Observações</Label>
+            <Textarea
               value={formData.observacoes}
               onChange={(e) => handleInputChange("observacoes", e.target.value)}
-              className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              className="mt-1"
               rows={2}
             />
           </div>
@@ -1922,28 +2396,31 @@ export default function OrdemServicoPage() {
                   <div key={item.id} className="border border-border rounded-lg p-3 space-y-2">
                     <div className="grid grid-cols-12 gap-2 items-end">
                       <div className="col-span-6">
-                        <label className="block text-xs font-medium mb-1">Serviço</label>
-                        <select
-                          value={item.servicoId || ""}
-                          onChange={(e) => handleItemChange(item.id, "servicoId", e.target.value)}
-                          onFocus={() => carregarServicos()}
-                          className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                        <Label className="text-xs mb-1">Serviço</Label>
+                        <Select
+                          value={item.servicoId !== undefined ? item.servicoId.toString() : SELECT_SERVICO_MANUAL}
+                          onValueChange={(value) => handleItemChange(item.id, "servicoId", value)}
                         >
-                          <option value="">Selecione um serviço ou digite manualmente</option>
-                          {servicos.map((servico) => (
-                            <option key={servico.id} value={servico.id}>
-                              {servico.nome} ({servico.tempoEstimadoHoras}h)
-                            </option>
-                          ))}
-                        </select>
+                          <SelectTrigger onFocus={() => carregarServicos()} className="h-9 text-sm px-2">
+                            <SelectValue placeholder="Selecione um serviço ou digite manualmente" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value={SELECT_SERVICO_MANUAL}>Selecione um serviço ou digite manualmente</SelectItem>
+                            {servicos.map((servico) => (
+                              <SelectItem key={servico.id} value={servico.id.toString()}>
+                                {servico.nome} ({servico.tempoEstimadoHoras}h)
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                       <div className="col-span-6">
-                        <label className="block text-xs font-medium mb-1">Descrição (ou digite manualmente)</label>
-                    <input
+                        <Label className="text-xs mb-1">Descrição (ou digite manualmente)</Label>
+                    <Input
                       type="text"
                       value={item.descricao}
                       onChange={(e) => handleItemChange(item.id, "descricao", e.target.value)}
-                      className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                      className="h-9 text-sm px-2"
                       placeholder="Serviço ou peça"
                           disabled={!!item.servicoId}
                     />
@@ -1969,35 +2446,35 @@ export default function OrdemServicoPage() {
 
                     <div className="grid grid-cols-12 gap-2 items-end">
                   <div className="col-span-2">
-                    <label className="block text-xs font-medium mb-1">Quantidade</label>
-                    <input
+                    <Label className="text-xs mb-1">Quantidade</Label>
+                    <Input
                       type="number"
                           min="1"
                       value={item.quantidade}
                       onChange={(e) => handleItemChange(item.id, "quantidade", e.target.value)}
-                      className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                      className="h-9 text-sm px-2"
                       placeholder="1"
                     />
                   </div>
                       <div className="col-span-3">
-                    <label className="block text-xs font-medium mb-1">Valor Unit.</label>
-                    <input
+                    <Label className="text-xs mb-1">Valor Unit.</Label>
+                    <Input
                       type="number"
                       step="0.01"
                       value={item.valorUnitario}
                       onChange={(e) => handleItemChange(item.id, "valorUnitario", e.target.value)}
-                      className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm"
+                      className="h-9 text-sm px-2"
                       placeholder="0.00"
                           readOnly={!!item.servicoId && !!formData.mecanico}
                     />
                   </div>
                   <div className="col-span-2">
-                    <label className="block text-xs font-medium mb-1">Total</label>
-                    <input
+                    <Label className="text-xs mb-1">Total</Label>
+                    <Input
                       type="text"
                       value={item.valorTotal}
                       readOnly
-                          className="w-full rounded-md border border-input bg-muted px-2 py-1.5 text-sm font-semibold"
+                          className="h-9 text-sm px-2 font-semibold bg-muted"
                       placeholder="0.00"
                     />
                   </div>
@@ -2006,9 +2483,9 @@ export default function OrdemServicoPage() {
                       <Button
                         type="button"
                             variant="ghost"
-                        size="sm"
+                        size="icon-sm"
                         onClick={() => removeItem(item.id)}
-                            className="h-9"
+                            className="h-9 w-9"
                       >
                         <Trash2 className="h-4 w-4" />
                       </Button>
@@ -2061,9 +2538,11 @@ export default function OrdemServicoPage() {
                 type="text"
                 required
                 value={newCliente.telefone}
-                onChange={(e) => setNewCliente({ ...newCliente, telefone: e.target.value })}
+                onChange={(e) => setNewCliente({ ...newCliente, telefone: formatTelefone(e.target.value) })}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 placeholder="(11) 99999-9999"
+                maxLength={15}
+                inputMode="tel"
               />
             </div>
             <div>
@@ -2072,8 +2551,9 @@ export default function OrdemServicoPage() {
                 type="email"
                 required
                 value={newCliente.email}
-                onChange={(e) => setNewCliente({ ...newCliente, email: e.target.value })}
+                onChange={(e) => setNewCliente({ ...newCliente, email: formatEmail(e.target.value) })}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                inputMode="email"
               />
             </div>
           </div>
@@ -2315,6 +2795,8 @@ export default function OrdemServicoPage() {
                 onChange={(e) => handleEditInputChange("telefone", e.target.value)}
                 disabled={!isEditMode}
                 className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
+                maxLength={15}
+                inputMode="tel"
               />
             </div>
           </div>
@@ -2327,6 +2809,7 @@ export default function OrdemServicoPage() {
               onChange={(e) => handleEditInputChange("email", e.target.value)}
               disabled={!isEditMode}
               className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
+              inputMode="email"
             />
           </div>
 
@@ -2369,13 +2852,45 @@ export default function OrdemServicoPage() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Ano *</label>
-              <input
-                type="text"
-                required
+              <Select
                 value={editFormData.ano}
-                onChange={(e) => handleEditInputChange("ano", e.target.value)}
+                onValueChange={(value) => handleEditInputChange("ano", value)}
                 disabled={!isEditMode}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Selecione o ano" />
+                </SelectTrigger>
+                <SelectContent>
+                  {YEAR_RANGE.map((year) => (
+                    <SelectItem key={year} value={year}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Data de Entrada *</label>
+              <DatePickerField
+                value={editFormData.dataEntrada}
+                onChange={(value) => handleEditInputChange("dataEntrada", value)}
+                placeholder="Selecione a data de entrada"
+                disabled={!isEditMode}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Previsão de Entrega</label>
+              <DatePickerField
+                value={editFormData.dataPrevisao}
+                onChange={(value) => handleEditInputChange("dataPrevisao", value)}
+                placeholder="Selecione a data de previsão"
+                disabled={!isEditMode}
+                allowClear={isEditMode}
+                className="mt-1"
               />
             </div>
           </div>
@@ -2627,7 +3142,10 @@ export default function OrdemServicoPage() {
                     setMarcaSearchTerm(e.target.value);
                     setShowMarcaDropdown(true);
                   }}
-                  onFocus={() => setShowMarcaDropdown(true)}
+                  onFocus={() => {
+                    carregarMarcas();
+                    setShowMarcaDropdown(true);
+                  }}
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm pr-24"
                   placeholder="Digite a marca"
                 />
@@ -2646,8 +3164,10 @@ export default function OrdemServicoPage() {
                       key={marca.id}
                       type="button"
                       onClick={() => {
-                        setNewVeiculoCliente({ ...newVeiculoCliente, marca: marca.nome });
+                        setNewVeiculoCliente({ ...newVeiculoCliente, marca: marca.nome, modelo: "" });
                         setMarcaSearchTerm(marca.nome);
+                        setShowModeloDropdown(false);
+                        carregarModelos(marca.id);
                         setShowMarcaDropdown(false);
                       }}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-accent border-b border-border last:border-b-0"
@@ -2665,11 +3185,46 @@ export default function OrdemServicoPage() {
                   type="text"
                   required
                   value={newVeiculoCliente.modelo}
-                  onChange={(e) => setNewVeiculoCliente({ ...newVeiculoCliente, modelo: e.target.value })}
-                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+                  onChange={(e) => {
+                    const valor = e.target.value;
+                    setNewVeiculoCliente({ ...newVeiculoCliente, modelo: valor });
+                    setShowModeloDropdown(true);
+                  }}
+                  onFocus={() => {
+                    if (newVeiculoCliente.marca) {
+                      const marcaSelecionada = marcas.find(m => m.nome === newVeiculoCliente.marca);
+                      carregarModelos(marcaSelecionada?.id);
+                    }
+                    setShowModeloDropdown(true);
+                  }}
+                  className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm pr-24"
                   placeholder="Digite o modelo"
                 />
+                <button
+                  type="button"
+                  onClick={() => setIsModeloModalOpen(true)}
+                  className="absolute right-2 top-2 text-primary hover:text-primary/80 transition-colors"
+                >
+                  <Plus className="h-5 w-5" />
+                </button>
               </div>
+              {showModeloDropdown && newVeiculoCliente.marca && modelosFiltradosNovoVeiculo.length > 0 && (
+                <div className="mt-1 border border-border rounded-md bg-background max-h-40 overflow-y-auto">
+                  {modelosFiltradosNovoVeiculo.map((modelo) => (
+                    <button
+                      key={modelo.id}
+                      type="button"
+                      onClick={() => {
+                        setNewVeiculoCliente({ ...newVeiculoCliente, modelo: modelo.nome });
+                        setShowModeloDropdown(false);
+                      }}
+                      className="w-full px-3 py-2 text-left text-sm hover:bg-accent border-b border-border last:border-b-0"
+                    >
+                      {modelo.nome}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -2686,13 +3241,21 @@ export default function OrdemServicoPage() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Ano</label>
-              <input
-                type="text"
-                value={newVeiculoCliente.ano}
-                onChange={(e) => setNewVeiculoCliente({ ...newVeiculoCliente, ano: e.target.value })}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="2020"
-              />
+              <Select
+                value={newVeiculoCliente.ano ?? ""}
+                onValueChange={(value) => setNewVeiculoCliente({ ...newVeiculoCliente, ano: value })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Selecione o ano" />
+                </SelectTrigger>
+                <SelectContent>
+                  {YEAR_RANGE.map((year) => (
+                    <SelectItem key={year} value={year}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div>
@@ -2734,7 +3297,10 @@ export default function OrdemServicoPage() {
                     setMarcaSearchTerm(e.target.value);
                     setShowMarcaDropdown(true);
                   }}
-                  onFocus={() => setShowMarcaDropdown(true)}
+                  onFocus={() => {
+                    carregarMarcas();
+                    setShowMarcaDropdown(true);
+                  }}
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm pr-24"
                   placeholder="Digite a marca"
                 />
@@ -2753,8 +3319,10 @@ export default function OrdemServicoPage() {
                       key={marca.id}
                       type="button"
                       onClick={() => {
-                        setNewVeiculoForm({ ...newVeiculoForm, marca: marca.nome });
+                        setNewVeiculoForm({ ...newVeiculoForm, marca: marca.nome, modelo: "" });
                         setMarcaSearchTerm(marca.nome);
+                        setShowModeloDropdown(false);
+                        carregarModelos(marca.id);
                         setShowMarcaDropdown(false);
                       }}
                       className="w-full px-3 py-2 text-left text-sm hover:bg-accent border-b border-border last:border-b-0"
@@ -2767,14 +3335,51 @@ export default function OrdemServicoPage() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Modelo *</label>
-              <input
-                type="text"
-                required
-                value={newVeiculoForm.modelo}
-                onChange={(e) => setNewVeiculoForm({ ...newVeiculoForm, modelo: e.target.value })}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="Digite o modelo"
-              />
+                <div className="relative">
+                  <input
+                    type="text"
+                    required
+                    value={newVeiculoForm.modelo}
+                    onChange={(e) => {
+                      const valor = e.target.value;
+                      setNewVeiculoForm({ ...newVeiculoForm, modelo: valor });
+                      setShowModeloDropdown(true);
+                    }}
+                    onFocus={() => {
+                      if (newVeiculoForm.marca) {
+                        const marcaSelecionada = marcas.find(m => m.nome === newVeiculoForm.marca);
+                        carregarModelos(marcaSelecionada?.id);
+                      }
+                      setShowModeloDropdown(true);
+                    }}
+                    className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm pr-24"
+                    placeholder="Digite o modelo"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setIsModeloModalOpen(true)}
+                    className="absolute right-2 top-2 text-primary hover:text-primary/80 transition-colors"
+                  >
+                    <Plus className="h-5 w-5" />
+                  </button>
+                </div>
+                {showModeloDropdown && newVeiculoForm.marca && modelosFiltradosNovoCliente.length > 0 && (
+                  <div className="mt-1 border border-border rounded-md bg-background max-h-40 overflow-y-auto">
+                    {modelosFiltradosNovoCliente.map((modelo) => (
+                      <button
+                        key={modelo.id}
+                        type="button"
+                        onClick={() => {
+                          setNewVeiculoForm({ ...newVeiculoForm, modelo: modelo.nome });
+                          setShowModeloDropdown(false);
+                        }}
+                        className="w-full px-3 py-2 text-left text-sm hover:bg-accent border-b border-border last:border-b-0"
+                      >
+                        {modelo.nome}
+                      </button>
+                    ))}
+                  </div>
+                )}
             </div>
           </div>
           <div className="grid grid-cols-2 gap-4">
@@ -2791,13 +3396,21 @@ export default function OrdemServicoPage() {
             </div>
             <div>
               <label className="block text-sm font-medium mb-1">Ano</label>
-              <input
-                type="text"
-                value={newVeiculoForm.ano}
-                onChange={(e) => setNewVeiculoForm({ ...newVeiculoForm, ano: e.target.value })}
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-                placeholder="2020"
-              />
+              <Select
+                value={newVeiculoForm.ano ?? ""}
+                onValueChange={(value) => setNewVeiculoForm({ ...newVeiculoForm, ano: value })}
+              >
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Selecione o ano" />
+                </SelectTrigger>
+                <SelectContent>
+                  {YEAR_RANGE.map((year) => (
+                    <SelectItem key={year} value={year}>
+                      {year}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
           <div>
@@ -2818,6 +3431,24 @@ export default function OrdemServicoPage() {
           </div>
         </form>
       </Modal>
+
+      {/* Dialog de Sucesso */}
+      <Dialog open={successDialog.open} onOpenChange={(open) => setSuccessDialog(prev => ({ ...prev, open }))}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <div className="flex items-center gap-2">
+              <CheckCircle className="h-6 w-6 text-green-600" />
+              <DialogTitle>{successDialog.title}</DialogTitle>
+            </div>
+          </DialogHeader>
+          <DialogDescription className="pt-2">
+            {successDialog.message}
+          </DialogDescription>
+          <DialogFooter>
+            <Button onClick={() => setSuccessDialog(prev => ({ ...prev, open: false }))}>OK</Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

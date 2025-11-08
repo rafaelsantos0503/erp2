@@ -194,7 +194,7 @@ export default function AtletasPage() {
     alert("✅ Atleta atualizado com sucesso!");
   };
 
-  const atletasVisiveis = atletas.filter(a => a.categoria !== "Excluído");
+  const atletasVisiveis = atletas;
   const atletasElite = atletasVisiveis.filter(a => a.categoria === "Elite").length;
   const totalEventos = atletasVisiveis.reduce((sum, a) => sum + a.eventos, 0);
 
@@ -472,7 +472,7 @@ export default function AtletasPage() {
               ))}
               {eventosProvas.length === 0 && (
                 <p className="text-sm text-muted-foreground text-center py-4">
-                  Nenhum evento cadastrado. Clique em "Adicionar Evento" para começar.
+                  Nenhum evento cadastrado. Clique em &quot;Adicionar Evento&quot; para começar.
                 </p>
               )}
             </div>
@@ -664,7 +664,7 @@ export default function AtletasPage() {
                 ))}
                 {(editEventosProvas.length === 0 && isEditMode) && (
                   <p className="text-sm text-muted-foreground text-center py-4">
-                    Nenhum evento cadastrado. Clique em "Adicionar Evento" para começar.
+                    Nenhum evento cadastrado. Clique em &quot;Adicionar Evento&quot; para começar.
                   </p>
                 )}
               </div>

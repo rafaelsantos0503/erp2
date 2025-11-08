@@ -133,12 +133,14 @@ export const configuracoesService = {
     if (!api.empresaId) {
       throw new Error("Empresa ID não encontrado");
     }
-    const params = new URLSearchParams();
-    params.append("empresaId", api.empresaId);
-    if (marcaId) {
-      params.append("marcaId", marcaId);
+    if (!marcaId) {
+      return [];
     }
-    const endpoint = `/oficina/configuracoes/modelos?${params.toString()}`;
+    const params = new URLSearchParams({
+      empresaId: api.empresaId,
+      marcaId,
+    });
+    const endpoint = `/oficina/modelos/by-marca?${params.toString()}`;
     return api.get(endpoint);
   },
 

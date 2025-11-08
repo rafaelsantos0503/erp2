@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Calendar, Users, Clock, MapPin, Activity } from "lucide-react";
-import type { StatusEvento } from "./eventos/page";
+import { StatusEvento } from "./eventos/page";
 
 interface EventoDashboard {
   id: number;
@@ -18,15 +18,15 @@ interface EventoDashboard {
 
 export default function CorridaDashboard() {
   const [eventos, setEventos] = useState<EventoDashboard[]>([
-    { id: 1, nome: "Maratona de São Paulo", data: "15/03/2024", local: "Parque Ibirapuera", distancias: "5K, 10K, 21K", inscritos: 450, vagas: 500, status: "Ativo" as StatusEvento },
-    { id: 2, nome: "Corrida Noturna 5K", data: "22/03/2024", local: "Avenida Paulista", distancias: "5K", inscritos: 120, vagas: 200, status: "Ativo" as StatusEvento },
-    { id: 3, nome: "Ultra Trail 42K", data: "01/04/2024", local: "Serra da Cantareira", distancias: "42K", inscritos: 85, vagas: 100, status: "Ativo" as StatusEvento },
-    { id: 4, nome: "Corrida Rústica 10K", data: "10/02/2024", local: "Parque Villa-Lobos", distancias: "10K", inscritos: 250, vagas: 250, status: "Finalizado" as StatusEvento },
+    { id: 1, nome: "Maratona de São Paulo", data: "15/03/2024", local: "Parque Ibirapuera", distancias: "5K, 10K, 21K", inscritos: 450, vagas: 500, status: StatusEvento.ANDAMENTO },
+    { id: 2, nome: "Corrida Noturna 5K", data: "22/03/2024", local: "Avenida Paulista", distancias: "5K", inscritos: 120, vagas: 200, status: StatusEvento.ANDAMENTO },
+    { id: 3, nome: "Ultra Trail 42K", data: "01/04/2024", local: "Serra da Cantareira", distancias: "42K", inscritos: 85, vagas: 100, status: StatusEvento.ANDAMENTO },
+    { id: 4, nome: "Corrida Rústica 10K", data: "10/02/2024", local: "Parque Villa-Lobos", distancias: "10K", inscritos: 250, vagas: 250, status: StatusEvento.FINALIZADO },
   ]);
 
-  const eventosAtivos = eventos.filter(e => e.status === "Ativo").slice(0, 3);
+  const eventosAtivos = eventos.filter(e => e.status === StatusEvento.ANDAMENTO).slice(0, 3);
   const eventosProximos = eventos
-    .filter(e => e.status === "Ativo")
+    .filter(e => e.status === StatusEvento.ANDAMENTO)
     .sort((a, b) => {
       const dateA = a.data.split('/').reverse().join('-');
       const dateB = b.data.split('/').reverse().join('-');
@@ -60,7 +60,7 @@ export default function CorridaDashboard() {
             <div className="flex items-center justify-between">
               <div>
                 <p className="text-sm font-medium text-muted-foreground">Eventos Ativos</p>
-                <p className="text-2xl font-bold">{eventos.filter(e => e.status === "Ativo").length}</p>
+                <p className="text-2xl font-bold">{eventos.filter(e => e.status === StatusEvento.ANDAMENTO).length}</p>
               </div>
               <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-green-100 dark:bg-green-900/20">
                 <Activity className="h-6 w-6 text-green-600 dark:text-green-400" />

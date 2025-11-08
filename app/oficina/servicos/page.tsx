@@ -52,6 +52,8 @@ export default function ServicosPage() {
   });
 
   const [servicos, setServicos] = useState<Servico[]>([]); // Dados carregados do backend
+  const [marcas] = useState<Marca[]>([]);
+  const [modelos] = useState<Modelo[]>([]);
   // Removido dados mockados - servicos agora vem do backend
   /*
   const [servicos, setServicos] = useState<Servico[]>([
@@ -154,11 +156,15 @@ export default function ServicosPage() {
     }
   };
 
-  const modelosFiltrados = editFormData.marcaId
-    ? [] // TODO: Filtrar modelos quando endpoint de modelos estiver disponível
-    : formData.marcaId
-    ? [] // TODO: Filtrar modelos quando endpoint de modelos estiver disponível
-    : [];
+  const modelosFiltradosCriacao: Modelo[] =
+    formData.tipoAplicacao === "ESPECIFICO" && formData.marcaId
+      ? modelos.filter((modelo) => modelo.marcaId === Number(formData.marcaId))
+      : [];
+
+  const modelosFiltradosEdicao: Modelo[] =
+    editFormData.tipoAplicacao === "ESPECIFICO" && editFormData.marcaId
+      ? modelos.filter((modelo) => modelo.marcaId === Number(editFormData.marcaId))
+      : [];
 
   const [paginaAtual, setPaginaAtual] = useState(1);
   const [itensPorPagina, setItensPorPagina] = useState(10);
@@ -276,8 +282,8 @@ export default function ServicosPage() {
           <div className="space-y-4">
             {servicosPaginaAtual.length > 0 ? (
               servicosPaginaAtual.map((servico) => {
-              const marca = null; // TODO: Buscar marca quando endpoint estiver disponível
-              const modelo = null; // TODO: Buscar modelo quando endpoint estiver disponível
+              const marca = servico.marcaId ? marcas.find((m) => m.id === servico.marcaId) ?? null : null;
+              const modelo = servico.modeloId ? modelos.find((m) => m.id === servico.modeloId) ?? null : null;
               
               return (
                 <div
@@ -464,7 +470,7 @@ export default function ServicosPage() {
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">Selecione uma marca</option>
-                  {[].map((marca) => (
+                  {marcas.map((marca) => (
                     <option key={marca.id} value={marca.id}>
                       {marca.nome}
                     </option>
@@ -480,7 +486,7 @@ export default function ServicosPage() {
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
                 >
                   <option value="">Selecione um modelo</option>
-                  {modelosFiltrados.map((modelo) => (
+                  {modelosFiltradosCriacao.map((modelo) => (
                     <option key={modelo.id} value={modelo.id}>
                       {modelo.nome}
                     </option>
@@ -569,7 +575,7 @@ export default function ServicosPage() {
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
                   <option value="">Selecione uma marca</option>
-                  {[].map((marca) => (
+                  {marcas.map((marca) => (
                     <option key={marca.id} value={marca.id}>
                       {marca.nome}
                     </option>
@@ -585,7 +591,7 @@ export default function ServicosPage() {
                   className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm disabled:opacity-50"
                 >
                   <option value="">Selecione um modelo</option>
-                  {modelosFiltrados.map((modelo) => (
+                  {modelosFiltradosEdicao.map((modelo) => (
                     <option key={modelo.id} value={modelo.id}>
                       {modelo.nome}
                     </option>

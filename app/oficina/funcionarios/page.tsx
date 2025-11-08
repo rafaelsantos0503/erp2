@@ -101,6 +101,24 @@ export default function FuncionariosPage() {
     }));
   };
 
+  const mapEnderecoToApi = (
+    endereco?: Endereco
+  ): FuncionarioAPI["endereco"] | undefined => {
+    if (!endereco) {
+      return undefined;
+    }
+
+    return {
+      cep: endereco.cep ?? "",
+      logradouro: endereco.logradouro ?? "",
+      numero: endereco.numero ?? "",
+      complemento: endereco.complemento ?? "",
+      bairro: endereco.bairro ?? "",
+      cidade: endereco.cidade ?? "",
+      estado: endereco.estado ?? "",
+    };
+  };
+
   const buscarCep = async (cep: string) => {
     const cepLimpo = cep.replace(/\D/g, "");
     if (cepLimpo.length !== 8) return;
@@ -146,7 +164,7 @@ export default function FuncionariosPage() {
         valorDespesa: formData.valorDespesa ? parseFloat(formData.valorDespesa) : 0,
         cpf: formData.cpf,
         dataAdmissao: formData.dataAdmissao,
-        endereco: formData.endereco,
+        endereco: mapEnderecoToApi(formData.endereco),
       });
       
       // Atualizar lista local
@@ -186,7 +204,7 @@ export default function FuncionariosPage() {
         valorDespesa: formData.valorDespesa ? parseFloat(formData.valorDespesa) : 0,
         cpf: formData.cpf,
         dataAdmissao: formData.dataAdmissao,
-        endereco: formData.endereco,
+        endereco: mapEnderecoToApi(formData.endereco),
       });
       
       // Atualizar lista local
