@@ -11,7 +11,7 @@ import { useAuth } from "@/lib/auth-context";
 import { clienteService, type ClienteAPI } from "@/lib/services/cliente.service";
 
 export interface VeiculoCliente {
-  id: number;
+  id: number | string;
   marca: string;
   modelo: string;
   placa: string;
@@ -20,7 +20,7 @@ export interface VeiculoCliente {
 }
 
 export interface Cliente {
-  id: number;
+  id: number | string;
   nome: string;
   telefone: string;
   email: string;

@@ -9,6 +9,8 @@ import type { PageRequest, PageResponse } from "./types";
 export interface OrdemServicoAPI {
   id: number;
   numero: string;
+  clienteId?: string;
+  clienteNome?: string;
   cliente: string;
   telefone: string;
   email: string;
@@ -25,6 +27,7 @@ export interface OrdemServicoAPI {
   mecanico: string;
   observacoes: string;
   valorTotal: number;
+  empresaId?: string;
   itens: Array<{
     id: number;
     servicoId?: number;
@@ -35,6 +38,11 @@ export interface OrdemServicoAPI {
     tempoEstimado?: number;
   }>;
 }
+
+export type OrdemServicoPayload = Partial<Omit<OrdemServicoAPI, "id">> & {
+  clienteId?: string;
+  empresaId?: string;
+};
 
 /**
  * Funções auxiliares para chamadas à API de Ordem de Serviço
@@ -76,11 +84,11 @@ export const ordemServicoService = {
     return api.get(`/oficina/ordem-servico/${id}`);
   },
 
-  create: async (api: ApiClient, data: Omit<OrdemServicoAPI, "id" | "numero">): Promise<OrdemServicoAPI> => {
+  create: async (api: ApiClient, data: OrdemServicoPayload): Promise<OrdemServicoAPI> => {
     return api.post("/oficina/ordem-servico", data);
   },
 
-  update: async (api: ApiClient, id: number, data: Partial<OrdemServicoAPI>): Promise<OrdemServicoAPI> => {
+  update: async (api: ApiClient, id: number, data: OrdemServicoPayload): Promise<OrdemServicoAPI> => {
     return api.put(`/oficina/ordem-servico/${id}`, data);
   },
 

@@ -7,7 +7,7 @@ import type { ApiClient } from "../api";
 import type { PageRequest, PageResponse } from "./types";
 
 export interface ClienteAPI {
-  id: number;
+  id: number | string;
   nome: string;
   telefone: string;
   email: string;
@@ -22,7 +22,7 @@ export interface ClienteAPI {
     estado: string;
   };
   veiculos?: Array<{
-    id: number;
+    id: number | string;
     marca: string;
     modelo: string;
     placa: string;
@@ -58,7 +58,7 @@ export const clienteService = {
     return api.post("/oficina/clientes", data);
   },
 
-  update: async (api: ApiClient, id: number, data: Partial<ClienteAPI>): Promise<ClienteAPI> => {
+  update: async (api: ApiClient, id: number | string, data: Partial<ClienteAPI>): Promise<ClienteAPI> => {
     return api.put(`/oficina/clientes/${id}`, data);
   },
 

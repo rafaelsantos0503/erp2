@@ -176,7 +176,12 @@ export function useApi() {
     if (!response.ok) {
       await handleResponseError(response, "atualizar dados");
     }
-    return response.json();
+    try {
+      const text = await response.text();
+      return text ? JSON.parse(text) : {};
+    } catch {
+      return {};
+    }
   }, [fetchWithAuth, handleResponseError]);
 
   const del = useCallback(async (endpoint: string) => {

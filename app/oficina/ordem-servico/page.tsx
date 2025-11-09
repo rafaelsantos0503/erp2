@@ -25,7 +25,7 @@ import type { ServicoAPI } from "@/lib/services/servico.service";
 import { configuracoesService, type MarcaAPI, type ModeloAPI } from "@/lib/services/configuracoes.service";
 import { useApi } from "@/lib/api";
 import { useAuth } from "@/lib/auth-context";
-import { ordemServicoService, type OrdemServicoAPI } from "@/lib/services/ordem-servico.service";
+import { ordemServicoService, type OrdemServicoAPI, type OrdemServicoPayload } from "@/lib/services/ordem-servico.service";
 import { financeiroService } from "@/lib/services/financeiro.service";
 import { clienteService } from "@/lib/services/cliente.service";
 import { funcionarioService } from "@/lib/services/funcionario.service";
@@ -173,6 +173,9 @@ interface ItemServico {
 interface OrdemServico {
   id: number;
   numero: string;
+  clienteId?: string;
+  clienteNome?: string;
+  empresaId?: string;
   cliente: string;
   telefone: string;
   email: string;
@@ -194,6 +197,74 @@ interface OrdemServico {
 
 export default function OrdemServicoPage() {
   const SELECT_SERVICO_MANUAL = "__manual__";
+
+  const getInitialFormData = () => ({
+    cliente: "",
+    telefone: "",
+    email: "",
+    marcaVeiculo: "",
+    modeloVeiculo: "",
+    placa: "",
+    ano: "",
+    cor: "",
+    descricaoProblema: "",
+    prioridade: Prioridade.BAIXA,
+    mecanico: "",
+    observacoes: "",
+    dataEntrada: format(new Date(), DATE_DISPLAY_FORMAT),
+    dataPrevisao: "",
+  });
+
+  const getInitialItens = (): ItemServico[] => [
+    { id: 1, descricao: "", quantidade: "", valorUnitario: "", valorTotal: "" },
+  ];
+
+  const getInitialNewCliente = () => ({
+    nome: "",
+    telefone: "",
+    email: "",
+    cpf: "",
+    endereco: {
+      cep: "",
+      logradouro: "",
+      numero: "",
+      complemento: "",
+      bairro: "",
+      cidade: "",
+      estado: "",
+    },
+    veiculos: [] as VeiculoCliente[],
+  });
+
+  const getInitialNewVeiculoForm = (): VeiculoCliente => ({
+    id: 0,
+    marca: "",
+    modelo: "",
+    placa: "",
+    ano: "",
+    cor: "",
+  });
+
+  const getInitialNewVeiculoCliente = () => ({
+    marca: "",
+    modelo: "",
+    placa: "",
+    ano: "",
+    cor: "",
+  });
+
+  const normalizeId = (id: number | string | null | undefined): string | null => {
+    if (id === null || id === undefined) {
+      return null;
+    }
+    return String(id);
+  };
+
+  const generateOrderNumber = () => {
+    const agora = new Date();
+    return format(agora, "'OS-'yyyyMMddHHmmssSSS");
+  };
+
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isClienteModalOpen, setIsClienteModalOpen] = useState(false);
@@ -224,22 +295,7 @@ export default function OrdemServicoPage() {
     margemLucroPorAtendimento: 10,
   });
   
-  const [formData, setFormData] = useState(() => ({
-    cliente: "",
-    telefone: "",
-    email: "",
-    marcaVeiculo: "",
-    modeloVeiculo: "",
-    placa: "",
-    ano: "",
-    cor: "",
-    descricaoProblema: "",
-    prioridade: Prioridade.BAIXA,
-    mecanico: "",
-    observacoes: "",
-    dataEntrada: format(new Date(), DATE_DISPLAY_FORMAT),
-    dataPrevisao: "",
-  }));
+  const [formData, setFormData] = useState(getInitialFormData);
 
   const [editFormData, setEditFormData] = useState({
     cliente: "",
@@ -259,26 +315,11 @@ export default function OrdemServicoPage() {
     dataPrevisao: "",
   });
 
-  const [newCliente, setNewCliente] = useState({
-    nome: "",
-    telefone: "",
-    email: "",
-    cpf: "",
-    endereco: {
-      cep: "",
-      logradouro: "",
-      numero: "",
-      complemento: "",
-      bairro: "",
-      cidade: "",
-      estado: "",
-    },
-    veiculos: [] as VeiculoCliente[],
-  });
+  const [newCliente, setNewCliente] = useState(getInitialNewCliente);
 
   const [newVeiculosCliente, setNewVeiculosCliente] = useState<VeiculoCliente[]>([]);
   const [isNewVeiculoModalOpen, setIsNewVeiculoModalOpen] = useState(false);
-  const [newVeiculoForm, setNewVeiculoForm] = useState<VeiculoCliente>({ id: 0, marca: "", modelo: "", placa: "", ano: "", cor: "" });
+  const [newVeiculoForm, setNewVeiculoForm] = useState<VeiculoCliente>(getInitialNewVeiculoForm);
 
   const [newMarca, setNewMarca] = useState({
     nome: "",
@@ -295,19 +336,13 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
   const [showClienteDropdown, setShowClienteDropdown] = useState(false);
   const [showMarcaDropdown, setShowMarcaDropdown] = useState(false);
   const [showModeloDropdown, setShowModeloDropdown] = useState(false);
-  const [selectedClienteId, setSelectedClienteId] = useState<number | null>(null);
+  const [selectedClienteId, setSelectedClienteId] = useState<string | null>(null);
+  const selectedClienteOriginalRef = useRef<Cliente | null>(null);
+  const [selectedClienteVeiculoId, setSelectedClienteVeiculoId] = useState<string | number | null>(null);
   const [isVeiculoClienteModalOpen, setIsVeiculoClienteModalOpen] = useState(false);
-  const [newVeiculoCliente, setNewVeiculoCliente] = useState({
-    marca: "",
-    modelo: "",
-    placa: "",
-    ano: "",
-    cor: "",
-  });
+  const [newVeiculoCliente, setNewVeiculoCliente] = useState(getInitialNewVeiculoCliente);
 
-  const [itens, setItens] = useState<ItemServico[]>([
-    { id: 1, descricao: "", quantidade: "", valorUnitario: "", valorTotal: "" },
-  ]);
+  const [itens, setItens] = useState<ItemServico[]>(getInitialItens);
 
   const [editItens, setEditItens] = useState<ItemServico[]>([
     { id: 1, descricao: "", quantidade: "", valorUnitario: "", valorTotal: "" },
@@ -333,6 +368,164 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
 
   const limparTelefone = (valor: string): string => valor.replace(/\D/g, "");
 
+  const sanitizeQuantityInput = (valor: string): string => {
+    if (!valor) return "";
+    const cleaned = valor.toString().replace(/[^0-9.,]/g, "");
+    if (!cleaned) return "";
+
+    if (cleaned.includes(",") || cleaned.includes(".")) {
+      const normalized = cleaned.replace(/\./g, "").replace(",", ".");
+      const numeric = parseFloat(normalized);
+      if (Number.isNaN(numeric) || !Number.isFinite(numeric)) {
+        const digits = cleaned.replace(/\D/g, "");
+        return digits;
+      }
+      return Math.floor(numeric).toString();
+    }
+
+    return valor.toString().replace(/\D/g, "");
+  };
+
+  const normalizeCurrencyString = (
+    valor: string | number | undefined,
+    options: { treatDigitsAsCents?: boolean } = {}
+  ): string => {
+    const { treatDigitsAsCents = false } = options;
+
+    if (valor === null || valor === undefined) {
+      return "0.00";
+    }
+
+    if (typeof valor === "number") {
+      return Number.isFinite(valor) ? valor.toFixed(2) : "0.00";
+    }
+
+    const raw = valor.toString();
+    if (!raw) return "0.00";
+
+    const cleaned = raw.replace(/[^0-9.,-]/g, "");
+    if (!cleaned) return "0.00";
+
+    if (!cleaned.includes(",") && !cleaned.includes(".")) {
+      const digits = cleaned;
+      const numeric = treatDigitsAsCents
+        ? parseInt(digits || "0", 10) / 100
+        : parseInt(digits || "0", 10);
+      return Number.isFinite(numeric) ? numeric.toFixed(2) : "0.00";
+    }
+
+    let normalized = cleaned;
+    if (cleaned.includes(",") && cleaned.includes(".")) {
+      const lastComma = cleaned.lastIndexOf(",");
+      const lastDot = cleaned.lastIndexOf(".");
+      if (lastComma > lastDot) {
+        normalized = cleaned.replace(/\./g, "").replace(",", ".");
+      } else {
+        normalized = cleaned.replace(/,/g, "");
+      }
+    } else if (cleaned.includes(",")) {
+      normalized = cleaned.replace(",", ".");
+    }
+
+    const numeric = parseFloat(normalized);
+    if (Number.isNaN(numeric) || !Number.isFinite(numeric)) {
+      const digits = cleaned.replace(/\D/g, "");
+      const fallback = parseInt(digits || "0", 10) / 100;
+      return Number.isFinite(fallback) ? fallback.toFixed(2) : "0.00";
+    }
+
+    return numeric.toFixed(2);
+  };
+
+  const formatCurrencyDisplay = (valor: string | number | undefined): string => {
+    const normalizedNumber =
+      typeof valor === "number"
+        ? valor
+        : parseFloat(normalizeCurrencyString(valor));
+
+    if (Number.isNaN(normalizedNumber) || !Number.isFinite(normalizedNumber)) {
+      return "R$ 0,00";
+    }
+
+    return new Intl.NumberFormat("pt-BR", {
+      style: "currency",
+      currency: "BRL",
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(normalizedNumber);
+  };
+
+  const calculateItemTotal = (quantidade: string, valorUnitario: string): string => {
+    const qtd = parseFloat(quantidade || "0");
+    const valor = parseFloat(valorUnitario || "0");
+    const total = qtd * valor;
+    if (Number.isNaN(total) || !Number.isFinite(total)) {
+      return "0.00";
+    }
+    return total.toFixed(2);
+  };
+
+  const converterClienteApiParaCliente = (clienteApi: ClienteAPI): Cliente => ({
+    id: clienteApi.id,
+    nome: clienteApi.nome,
+    telefone: formatTelefone(clienteApi.telefone ?? ""),
+    email: formatEmail(clienteApi.email ?? ""),
+    cpf: clienteApi.cpf,
+    endereco: clienteApi.endereco,
+    veiculos: (clienteApi.veiculos || []).map((veiculo) => ({
+      id: veiculo.id,
+      marca: veiculo.marca,
+      modelo: veiculo.modelo,
+      placa: veiculo.placa,
+      ano: formatAno(veiculo.ano ?? ""),
+      cor: veiculo.cor ?? "",
+    })),
+  });
+
+  const converterClienteFrontendParaApi = (cliente: Cliente): ClienteAPI => {
+    const endereco = cliente.endereco
+      ? {
+          cep: cliente.endereco.cep ?? "",
+          logradouro: cliente.endereco.logradouro ?? "",
+          numero: cliente.endereco.numero ?? "",
+          complemento: cliente.endereco.complemento,
+          bairro: cliente.endereco.bairro ?? "",
+          cidade: cliente.endereco.cidade ?? "",
+          estado: cliente.endereco.estado ?? "",
+        }
+      : {
+          cep: "",
+          logradouro: "",
+          numero: "",
+          complemento: "",
+          bairro: "",
+          cidade: "",
+          estado: "",
+        };
+
+    const veiculosApi =
+      cliente.veiculos && cliente.veiculos.length > 0
+        ? cliente.veiculos.map((veiculo) => ({
+            id: veiculo.id,
+            marca: veiculo.marca,
+            modelo: veiculo.modelo,
+            placa: veiculo.placa,
+            ano: formatAno(veiculo.ano ?? ""),
+            cor: veiculo.cor ?? "",
+          }))
+        : null;
+
+    return {
+      id: cliente.id,
+      nome: cliente.nome.trim(),
+      telefone: limparTelefone(cliente.telefone),
+      email: formatEmail(cliente.email || ""),
+      cpf: cliente.cpf ?? "",
+      endereco,
+      veiculos: veiculosApi,
+    };
+  };
+
   const api = useApi();
   const { empresaId } = api; // Extrai empresaId do api
   const { token } = useAuth(); // Pega token do contexto de auth
@@ -354,6 +547,9 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
     return {
       id: api.id,
       numero: api.numero,
+      clienteId: normalizeId(api.clienteId ?? null) ?? undefined,
+      clienteNome: api.clienteNome ?? api.cliente,
+      empresaId: api.empresaId ?? undefined,
       cliente: api.cliente,
       telefone: formatTelefone(api.telefone ?? ""),
       email: formatEmail(api.email ?? ""),
@@ -369,21 +565,32 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
       dataPrevisao: formatDateFromApi(api.dataPrevisao),
       mecanico: api.mecanico,
       observacoes: api.observacoes,
-      valorTotal: api.valorTotal,
-      itens: (api.itens || []).map(item => ({
-        id: item.id,
-        servicoId: item.servicoId,
-        descricao: item.descricao,
-        quantidade: item.quantidade,
-        valorUnitario: item.valorUnitario,
-        valorTotal: item.valorTotal,
-        tempoEstimado: item.tempoEstimado,
-      })),
+      valorTotal: parseFloat(normalizeCurrencyString(api.valorTotal)),
+      itens: (api.itens || []).map(item => {
+        const quantidadeSanitizada = sanitizeQuantityInput(item.quantidade?.toString() ?? "");
+        const valorUnitarioNormalizado = normalizeCurrencyString(item.valorUnitario);
+        const valorTotalNormalizado = normalizeCurrencyString(
+          item.valorTotal ?? calculateItemTotal(quantidadeSanitizada, valorUnitarioNormalizado)
+        );
+
+        return {
+          id: item.id,
+          servicoId: item.servicoId,
+          descricao: item.descricao,
+          quantidade: quantidadeSanitizada,
+          valorUnitario: valorUnitarioNormalizado,
+          valorTotal: valorTotalNormalizado,
+          tempoEstimado: item.tempoEstimado,
+        };
+      }),
     };
   };
 
-  const converterFrontendparaAPI = (ordem: OrdemServico): Omit<OrdemServicoAPI, "id" | "numero"> => {
-    return {
+  const converterFrontendparaAPI = (ordem: OrdemServico): OrdemServicoPayload => {
+    const payload: OrdemServicoPayload = {
+      numero: ordem.numero,
+      clienteId: ordem.clienteId,
+      clienteNome: ordem.clienteNome ?? ordem.cliente,
       cliente: ordem.cliente,
       telefone: limparTelefone(ordem.telefone),
       email: formatEmail(ordem.email || ""),
@@ -400,16 +607,19 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
       mecanico: ordem.mecanico,
       observacoes: ordem.observacoes,
       valorTotal: ordem.valorTotal,
+      empresaId: ordem.empresaId,
       itens: (ordem.itens || []).map(item => ({
         id: item.id,
         servicoId: item.servicoId,
         descricao: item.descricao,
-        quantidade: item.quantidade,
-        valorUnitario: item.valorUnitario,
-        valorTotal: item.valorTotal,
+        quantidade: sanitizeQuantityInput(item.quantidade),
+        valorUnitario: normalizeCurrencyString(item.valorUnitario),
+        valorTotal: normalizeCurrencyString(item.valorTotal),
         tempoEstimado: item.tempoEstimado,
       })),
     };
+
+    return payload;
   };
 
   // Função para converter data DD/MM/YYYY para YYYY-MM-DD
@@ -671,22 +881,7 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
     try {
       const pagina = await clienteService.getAll(api, { page: 0, size: 1000 });
       // Converte ClienteAPI para Cliente
-      const clientesConvertidos: Cliente[] = pagina.content.map((c: ClienteAPI) => ({
-        id: c.id,
-        nome: c.nome,
-        telefone: formatTelefone(c.telefone ?? ""),
-        email: formatEmail(c.email ?? ""),
-        cpf: c.cpf,
-        endereco: c.endereco,
-        veiculos: (c.veiculos || []).map(v => ({
-          id: v.id,
-          marca: v.marca,
-          modelo: v.modelo,
-          placa: v.placa,
-          ano: v.ano,
-          cor: v.cor,
-        })),
-      }));
+      const clientesConvertidos: Cliente[] = pagina.content.map(converterClienteApiParaCliente);
       setClientes(clientesConvertidos);
     } catch (error) {
       console.error("Erro ao carregar clientes:", error);
@@ -863,7 +1058,7 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
                   configuracoesFinanceiras
                 );
                 updated.valorUnitario = calculo.valorTotal.toFixed(2);
-                updated.valorTotal = calculo.valorTotal.toFixed(2);
+                updated.valorTotal = calculateItemTotal(updated.quantidade, updated.valorUnitario);
               }
             }
           }
@@ -871,13 +1066,23 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
           return updated;
         }
 
-        (updated as Record<keyof ItemServico, string | number | undefined>)[field] = value as never;
-
-        if (field === "quantidade" || field === "valorUnitario") {
-          const qtd = parseFloat(updated.quantidade) || 0;
-          const valor = parseFloat(updated.valorUnitario) || 0;
-          updated.valorTotal = (qtd * valor).toFixed(2);
+        if (field === "quantidade") {
+          const quantidadeSanitizada = sanitizeQuantityInput(String(value));
+          updated.quantidade = quantidadeSanitizada;
+          const valorNormalizado = normalizeCurrencyString(updated.valorUnitario);
+          updated.valorUnitario = valorNormalizado;
+          updated.valorTotal = calculateItemTotal(quantidadeSanitizada, valorNormalizado);
+          return updated;
         }
+
+        if (field === "valorUnitario") {
+          const valorNormalizado = normalizeCurrencyString(value, { treatDigitsAsCents: true });
+          updated.valorUnitario = valorNormalizado;
+          updated.valorTotal = calculateItemTotal(updated.quantidade, valorNormalizado);
+          return updated;
+        }
+
+        (updated as Record<keyof ItemServico, string | number | undefined>)[field] = value as never;
 
         return updated;
       })
@@ -986,7 +1191,7 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
                   configuracoesFinanceiras
                 );
                 updated.valorUnitario = calculo.valorTotal.toFixed(2);
-                updated.valorTotal = calculo.valorTotal.toFixed(2);
+                updated.valorTotal = calculateItemTotal(updated.quantidade, updated.valorUnitario);
               }
             }
           }
@@ -994,13 +1199,23 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
           return updated;
         }
 
-        (updated as Record<keyof ItemServico, string | number | undefined>)[field] = value as never;
-
-        if (field === "quantidade" || field === "valorUnitario") {
-          const qtd = parseFloat(updated.quantidade) || 0;
-          const valor = parseFloat(updated.valorUnitario) || 0;
-          updated.valorTotal = (qtd * valor).toFixed(2);
+        if (field === "quantidade") {
+          const quantidadeSanitizada = sanitizeQuantityInput(String(value));
+          updated.quantidade = quantidadeSanitizada;
+          const valorNormalizado = normalizeCurrencyString(updated.valorUnitario);
+          updated.valorUnitario = valorNormalizado;
+          updated.valorTotal = calculateItemTotal(quantidadeSanitizada, valorNormalizado);
+          return updated;
         }
+
+        if (field === "valorUnitario") {
+          const valorNormalizado = normalizeCurrencyString(value, { treatDigitsAsCents: true });
+          updated.valorUnitario = valorNormalizado;
+          updated.valorTotal = calculateItemTotal(updated.quantidade, valorNormalizado);
+          return updated;
+        }
+
+        (updated as Record<keyof ItemServico, string | number | undefined>)[field] = value as never;
 
         return updated;
       })
@@ -1021,6 +1236,7 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
   };
 
   const handleClienteSelect = (cliente: Cliente) => {
+    const clienteIdNormalizado = normalizeId(cliente.id);
     setFormData({
       ...formData,
       cliente: cliente.nome,
@@ -1033,8 +1249,10 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
       cor: "",
     });
     setClienteSearchTerm(cliente.nome);
-    setSelectedClienteId(cliente.id);
+    setSelectedClienteId(clienteIdNormalizado);
     setShowClienteDropdown(false);
+    selectedClienteOriginalRef.current = JSON.parse(JSON.stringify(cliente)) as Cliente;
+    setSelectedClienteVeiculoId(null);
   };
 
   const handleMarcaSelect = (marca: Marca) => {
@@ -1119,7 +1337,14 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
 
   const handleSaveNewVeiculo = (e: React.FormEvent) => {
     e.preventDefault();
-    const novoId = newVeiculosCliente.length > 0 ? Math.max(...newVeiculosCliente.map(v => v.id)) + 1 : 1;
+    const novoId =
+      newVeiculosCliente.length > 0
+        ? Math.max(
+            ...newVeiculosCliente.map((v) =>
+              typeof v.id === "number" ? v.id : parseInt(String(v.id), 10) || 0
+            )
+          ) + 1
+        : 1;
     const novoVeiculo = { ...newVeiculoForm, id: novoId };
     setNewVeiculosCliente([...newVeiculosCliente, novoVeiculo]);
     setIsNewVeiculoModalOpen(false);
@@ -1128,13 +1353,16 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
     setShowModeloDropdown(false);
   };
 
-  const handleRemoveNewVeiculo = (id: number) => {
-    setNewVeiculosCliente(newVeiculosCliente.filter(v => v.id !== id));
+  const handleRemoveNewVeiculo = (id: number | string) => {
+    const idNormalizado = normalizeId(id);
+    setNewVeiculosCliente((prev) =>
+      prev.filter((veiculo) => normalizeId(veiculo.id) !== idNormalizado)
+    );
   };
 
   const getVeiculosDoCliente = (): VeiculoCliente[] => {
     if (!selectedClienteId) return [];
-    const cliente = clientes.find(c => c.id === selectedClienteId);
+    const cliente = clientes.find(c => normalizeId(c.id) === selectedClienteId);
     return cliente?.veiculos || [];
   };
 
@@ -1149,15 +1377,22 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
     });
     setModeloSearchTerm(`${veiculo.marca} ${veiculo.modelo} - ${veiculo.placa}`);
     setShowModeloDropdown(false);
+    setSelectedClienteVeiculoId(veiculo.id);
   };
 
   const handleNewVeiculoClienteSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!selectedClienteId) return;
     
-    const veiculoId = getVeiculosDoCliente().length > 0 
-      ? Math.max(...getVeiculosDoCliente().map(v => v.id)) + 1 
-      : 1;
+    const veiculosExistentes = getVeiculosDoCliente();
+    const veiculoId =
+      veiculosExistentes.length > 0
+        ? Math.max(
+            ...veiculosExistentes.map((v) =>
+              typeof v.id === "number" ? v.id : parseInt(String(v.id), 10) || 0
+            )
+          ) + 1
+        : 1;
     
     const novoVeiculo: VeiculoCliente = {
       id: veiculoId,
@@ -1169,7 +1404,7 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
     };
 
     setClientes(clientes.map(c => {
-      if (c.id === selectedClienteId) {
+      if (normalizeId(c.id) === selectedClienteId) {
         return {
           ...c,
           veiculos: [...(c.veiculos || []), novoVeiculo]
@@ -1270,12 +1505,199 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
     setIsModeloModalOpen(true);
   };
 
+  const closeCreateModal = () => {
+    setIsModalOpen(false);
+    setIsClienteModalOpen(false);
+    setIsMarcaModalOpen(false);
+    setIsModeloModalOpen(false);
+    setIsNewVeiculoModalOpen(false);
+    setIsVeiculoClienteModalOpen(false);
+    setShowClienteDropdown(false);
+    setShowMarcaDropdown(false);
+    setShowModeloDropdown(false);
+    setSelectedClienteId(null);
+    setSelectedClienteVeiculoId(null);
+    selectedClienteOriginalRef.current = null;
+    setClienteSearchTerm("");
+    setMarcaSearchTerm("");
+    setModeloSearchTerm("");
+    setFormData(getInitialFormData());
+    setItens(getInitialItens());
+    setNewCliente(getInitialNewCliente());
+    setNewVeiculosCliente([]);
+    setNewVeiculoForm(getInitialNewVeiculoForm());
+    setNewVeiculoCliente(getInitialNewVeiculoCliente());
+    setNewMarca({ nome: "" });
+    setNewModelo({ marcaId: "", nome: "" });
+  };
+
+  const closeEditModal = () => {
+    setIsEditModalOpen(false);
+    setIsEditMode(false);
+    setEditingOrdemId(null);
+    setIsMarcaModalOpen(false);
+    setIsModeloModalOpen(false);
+    setIsNewVeiculoModalOpen(false);
+    setIsVeiculoClienteModalOpen(false);
+    setShowMarcaDropdown(false);
+    setShowModeloDropdown(false);
+  };
+
+  const atualizarClienteSeNecessario = async () => {
+    if (!selectedClienteId || !selectedClienteOriginalRef.current) {
+      return;
+    }
+
+    const clienteOriginal = selectedClienteOriginalRef.current;
+    let houveAlteracao = false;
+
+    const clienteAtualizado: Cliente = {
+      ...clienteOriginal,
+      veiculos: clienteOriginal.veiculos ? [...clienteOriginal.veiculos] : undefined,
+    };
+
+    const nomeAtual = formData.cliente.trim();
+    if (nomeAtual && nomeAtual !== clienteOriginal.nome) {
+      clienteAtualizado.nome = nomeAtual;
+      houveAlteracao = true;
+    }
+
+    const telefoneAtualFormatado = formatTelefone(formData.telefone);
+    const telefoneAtualLimpo = limparTelefone(formData.telefone);
+    const telefoneOriginalLimpo = limparTelefone(clienteOriginal.telefone ?? "");
+    if (telefoneAtualLimpo && telefoneAtualLimpo !== telefoneOriginalLimpo) {
+      clienteAtualizado.telefone = telefoneAtualFormatado;
+      houveAlteracao = true;
+    }
+
+    const emailAtual = formatEmail(formData.email || "");
+    const emailOriginal = formatEmail(clienteOriginal.email || "");
+    if (emailAtual !== emailOriginal) {
+      clienteAtualizado.email = emailAtual;
+      houveAlteracao = true;
+    }
+
+    let veiculoIdParaSincronizar: string | number | null = selectedClienteVeiculoId;
+    const veiculosAtuais = clienteAtualizado.veiculos ? [...clienteAtualizado.veiculos] : [];
+
+    if (veiculosAtuais.length > 0 && selectedClienteVeiculoId) {
+      const index = veiculosAtuais.findIndex((veiculo) => veiculo.id === selectedClienteVeiculoId);
+      if (index !== -1) {
+        const veiculo = { ...veiculosAtuais[index] };
+        let veiculoAlterado = false;
+
+        if (formData.marcaVeiculo && formData.marcaVeiculo !== veiculo.marca) {
+          veiculo.marca = formData.marcaVeiculo;
+          veiculoAlterado = true;
+        }
+
+        if (formData.modeloVeiculo && formData.modeloVeiculo !== veiculo.modelo) {
+          veiculo.modelo = formData.modeloVeiculo;
+          veiculoAlterado = true;
+        }
+
+        if (formData.placa && formData.placa !== veiculo.placa) {
+          veiculo.placa = formData.placa;
+          veiculoAlterado = true;
+        }
+
+        if (formData.ano && formData.ano !== (veiculo.ano ?? "")) {
+          veiculo.ano = formData.ano;
+          veiculoAlterado = true;
+        }
+
+        if (formData.cor && formData.cor !== (veiculo.cor ?? "")) {
+          veiculo.cor = formData.cor;
+          veiculoAlterado = true;
+        }
+
+        if (veiculoAlterado) {
+          veiculosAtuais[index] = veiculo;
+          clienteAtualizado.veiculos = veiculosAtuais;
+          houveAlteracao = true;
+        }
+      }
+    } else {
+      const camposVeiculoPreenchidos =
+        formData.placa || formData.marcaVeiculo || formData.modeloVeiculo || formData.ano || formData.cor;
+
+      if (camposVeiculoPreenchidos && formData.placa) {
+        const novoVeiculoId =
+          veiculosAtuais.length > 0
+            ? Math.max(
+                ...veiculosAtuais.map((veiculo) =>
+                  typeof veiculo.id === "number" ? veiculo.id : parseInt(String(veiculo.id), 10) || 0
+                )
+              ) + 1
+            : 1;
+
+        const novoVeiculo: VeiculoCliente = {
+          id: novoVeiculoId,
+          marca: formData.marcaVeiculo,
+          modelo: formData.modeloVeiculo,
+          placa: formData.placa,
+          ano: formData.ano,
+          cor: formData.cor,
+        };
+
+        veiculosAtuais.push(novoVeiculo);
+        clienteAtualizado.veiculos = veiculosAtuais;
+        houveAlteracao = true;
+        veiculoIdParaSincronizar = novoVeiculoId;
+      }
+    }
+
+    if (!houveAlteracao) {
+      return;
+    }
+
+    const clienteApiPayload = converterClienteFrontendParaApi(clienteAtualizado);
+    const clienteAtualizadoApi = await clienteService.update(api, selectedClienteId, clienteApiPayload);
+    const clienteNormalizado = converterClienteApiParaCliente(clienteAtualizadoApi);
+
+    setClientes((prev) =>
+      prev.map((cliente) =>
+        normalizeId(cliente.id) === selectedClienteId ? clienteNormalizado : cliente
+      )
+    );
+
+    selectedClienteOriginalRef.current = JSON.parse(JSON.stringify(clienteNormalizado)) as Cliente;
+
+    const veiculoCorrespondente =
+      clienteNormalizado.veiculos?.find((veiculo) =>
+        veiculoIdParaSincronizar
+          ? normalizeId(veiculo.id) === normalizeId(veiculoIdParaSincronizar)
+          : veiculo.placa === formData.placa
+      ) ?? null;
+
+    setSelectedClienteVeiculoId(veiculoCorrespondente?.id ?? null);
+
+    setFormData((prev) => ({
+      ...prev,
+      cliente: clienteNormalizado.nome,
+      telefone: clienteNormalizado.telefone,
+      email: clienteNormalizado.email ?? "",
+      marcaVeiculo: veiculoCorrespondente?.marca ?? prev.marcaVeiculo,
+      modeloVeiculo: veiculoCorrespondente?.modelo ?? prev.modeloVeiculo,
+      placa: veiculoCorrespondente?.placa ?? prev.placa,
+      ano: veiculoCorrespondente?.ano ?? prev.ano,
+      cor: veiculoCorrespondente?.cor ?? prev.cor,
+    }));
+
+    if (veiculoCorrespondente) {
+      setModeloSearchTerm(
+        `${veiculoCorrespondente.marca} ${veiculoCorrespondente.modelo} - ${veiculoCorrespondente.placa}`
+      );
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setCarregando(true);
     setErro(null);
 
     try {
+      await atualizarClienteSeNecessario();
     const valorTotal = itens.reduce((sum, item) => {
       const qtd = parseFloat(item.quantidade) || 0;
       const valor = parseFloat(item.valorUnitario) || 0;
@@ -1285,9 +1707,17 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
     const hoje = format(new Date(), DATE_DISPLAY_FORMAT);
     const dataEntradaSelecionada = formData.dataEntrada || hoje;
 
+    const numeroGerado = generateOrderNumber();
+    const clienteIdPayload =
+      selectedClienteId ?? normalizeId(selectedClienteOriginalRef.current?.id) ?? undefined;
+    const empresaIdPayload = typeof empresaId === "string" ? empresaId : undefined;
+
     const novaOrdem: OrdemServico = {
         id: 0, // Será definido pelo backend
-        numero: "", // Será gerado pelo backend
+      numero: numeroGerado,
+      clienteId: clienteIdPayload,
+      clienteNome: formData.cliente,
+      empresaId: empresaIdPayload,
       cliente: formData.cliente,
       telefone: formData.telefone,
       email: formData.email,
@@ -1313,28 +1743,7 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
       // Recarregar lista
       await carregarOrdens();
 
-    setIsModalOpen(false);
-    setFormData({
-      cliente: "",
-      telefone: "",
-      email: "",
-      marcaVeiculo: "",
-      modeloVeiculo: "",
-      placa: "",
-      ano: "",
-      cor: "",
-      descricaoProblema: "",
-      prioridade: Prioridade.BAIXA,
-      mecanico: "",
-      observacoes: "",
-      dataEntrada: format(new Date(), DATE_DISPLAY_FORMAT),
-      dataPrevisao: "",
-    });
-    setClienteSearchTerm("");
-    setMarcaSearchTerm("");
-    setModeloSearchTerm("");
-    setSelectedClienteId(null);
-    setItens([{ id: 1, descricao: "", quantidade: "", valorUnitario: "", valorTotal: "" }]);
+    closeCreateModal();
     
     // Mostrar dialog de sucesso
     setSuccessDialog({
@@ -1370,8 +1779,13 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
       const novoStatus = editFormData.status as StatusOrdemServico;
       const statusMudou = ordemOriginal.status !== novoStatus;
 
+    const empresaIdPayload = ordemOriginal.empresaId ?? (typeof empresaId === "string" ? empresaId : undefined);
+
     const ordemAtualizada: OrdemServico = {
         ...ordemOriginal,
+      clienteId: ordemOriginal.clienteId,
+      clienteNome: editFormData.cliente,
+      empresaId: empresaIdPayload,
       cliente: editFormData.cliente,
       telefone: editFormData.telefone,
       email: editFormData.email,
@@ -1410,8 +1824,7 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
       // Recarregar lista
       await carregarOrdens();
 
-    setIsEditModalOpen(false);
-    setEditingOrdemId(null);
+    closeEditModal();
     
     // Mostrar dialog de sucesso
     setSuccessDialog({
@@ -1452,6 +1865,12 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
 
       // Recarregar lista
       await carregarOrdens();
+
+      setSuccessDialog({
+        open: true,
+        title: "Status atualizado",
+        message: `Status alterado para ${novoStatus}.`
+      });
     } catch (error) {
       console.error("Erro ao alterar status:", error);
       setErro("Erro ao alterar status da ordem. Tente novamente.");
@@ -2024,7 +2443,7 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
       {/* Modal de Nova Ordem */}
       <Modal
         isOpen={isModalOpen}
-        onClose={() => setIsModalOpen(false)}
+        onClose={closeCreateModal}
         title="Nova Ordem de Serviço"
       >
         <form onSubmit={handleSubmit} className="space-y-4">
@@ -2278,7 +2697,6 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
                 value={formData.placa}
                 onChange={(e) => handleInputChange("placa", e.target.value.toUpperCase())}
                 className="mt-1"
-                readOnly={!!selectedClienteId && veiculosDoCliente.length > 0}
               />
             </div>
             <div>
@@ -2286,7 +2704,6 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
               <Select
                 value={formData.ano}
                 onValueChange={(value) => handleInputChange("ano", value)}
-                disabled={!!selectedClienteId && veiculosDoCliente.length > 0}
               >
                 <SelectTrigger className="mt-1">
                   <SelectValue placeholder="Selecione o ano" />
@@ -2311,7 +2728,6 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
                 value={formData.cor}
                 onChange={(e) => handleInputChange("cor", e.target.value)}
                 className="mt-1"
-                readOnly={!!selectedClienteId && veiculosDoCliente.length > 0}
               />
             </div>
             <div>
@@ -2448,8 +2864,9 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
                   <div className="col-span-2">
                     <Label className="text-xs mb-1">Quantidade</Label>
                     <Input
-                      type="number"
-                          min="1"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={item.quantidade}
                       onChange={(e) => handleItemChange(item.id, "quantidade", e.target.value)}
                       className="h-9 text-sm px-2"
@@ -2459,12 +2876,12 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
                       <div className="col-span-3">
                     <Label className="text-xs mb-1">Valor Unit.</Label>
                     <Input
-                      type="number"
-                      step="0.01"
-                      value={item.valorUnitario}
+                      type="text"
+                      inputMode="decimal"
+                      value={formatCurrencyDisplay(item.valorUnitario)}
                       onChange={(e) => handleItemChange(item.id, "valorUnitario", e.target.value)}
                       className="h-9 text-sm px-2"
-                      placeholder="0.00"
+                      placeholder="R$ 0,00"
                           readOnly={!!item.servicoId && !!formData.mecanico}
                     />
                   </div>
@@ -2472,10 +2889,10 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
                     <Label className="text-xs mb-1">Total</Label>
                     <Input
                       type="text"
-                      value={item.valorTotal}
+                      value={formatCurrencyDisplay(item.valorTotal)}
                       readOnly
                           className="h-9 text-sm px-2 font-semibold bg-muted"
-                      placeholder="0.00"
+                      placeholder="R$ 0,00"
                     />
                   </div>
                   <div className="col-span-1">
@@ -2505,7 +2922,7 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
           </div>
 
           <div className="flex justify-end gap-2 border-t pt-4">
-            <Button type="button" variant="outline" onClick={() => setIsModalOpen(false)}>
+            <Button type="button" variant="outline" onClick={closeCreateModal}>
               Cancelar
             </Button>
             <Button type="submit">Salvar</Button>
@@ -2770,7 +3187,7 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
       {/* Modal de Edição/Visualização */}
       <Modal
         isOpen={isEditModalOpen}
-        onClose={() => setIsEditModalOpen(false)}
+        onClose={closeEditModal}
         title={isEditMode ? "Editar Ordem de Serviço" : "Visualizar Ordem de Serviço"}
       >
         <form onSubmit={handleEditSubmit} className="space-y-4">
@@ -3057,8 +3474,9 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
                   <div className="col-span-2">
                     <label className="block text-xs font-medium mb-1">Quantidade</label>
                     <input
-                      type="number"
-                          min="1"
+                      type="text"
+                      inputMode="numeric"
+                      pattern="[0-9]*"
                       value={item.quantidade}
                       onChange={(e) => handleEditItemChange(item.id, "quantidade", e.target.value)}
                       disabled={!isEditMode}
@@ -3069,23 +3487,23 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
                       <div className="col-span-3">
                     <label className="block text-xs font-medium mb-1">Valor Unit.</label>
                     <input
-                      type="number"
-                      step="0.01"
-                      value={item.valorUnitario}
+                      type="text"
+                      inputMode="decimal"
+                      value={formatCurrencyDisplay(item.valorUnitario)}
                       onChange={(e) => handleEditItemChange(item.id, "valorUnitario", e.target.value)}
                           disabled={!isEditMode || (!!item.servicoId && !!editFormData.mecanico)}
                       className="w-full rounded-md border border-input bg-background px-2 py-1.5 text-sm disabled:opacity-50"
-                      placeholder="0.00"
+                      placeholder="R$ 0,00"
                     />
                   </div>
                   <div className="col-span-2">
                     <label className="block text-xs font-medium mb-1">Total</label>
                     <input
                       type="text"
-                      value={item.valorTotal}
+                      value={formatCurrencyDisplay(item.valorTotal)}
                       readOnly
                           className="w-full rounded-md border border-input bg-muted px-2 py-1.5 text-sm font-semibold"
-                      placeholder="0.00"
+                      placeholder="R$ 0,00"
                     />
                   </div>
                   <div className="col-span-1">
@@ -3115,7 +3533,7 @@ const [modeloSearchTerm, setModeloSearchTerm] = useState("");
           </div>
 
           <div className="flex justify-end gap-2 border-t pt-4">
-            <Button type="button" variant="outline" onClick={() => setIsEditModalOpen(false)}>
+            <Button type="button" variant="outline" onClick={closeEditModal}>
               {isEditMode ? "Cancelar" : "Fechar"}
             </Button>
             {isEditMode && <Button type="submit">Salvar</Button>}
